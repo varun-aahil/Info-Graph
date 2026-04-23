@@ -7,6 +7,8 @@ import {
   type AuthUserDto,
 } from '@/lib/api';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -19,8 +21,9 @@ interface AuthContextValue {
   user: AuthUser | null;
   signUp: (data: { name: string; email: string; password: string }) => Promise<void>;
   signIn: (data: { email: string; password: string }) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => void;
   signOut: () => void;
+  _setUser: (user: AuthUser | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -86,14 +89,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(mapBackendUser(response.user), response.access_token);
   };
 
-  const signInWithGoogle = async () => {
-    throw new Error('Google OAuth is not configured on the backend yet.');
+  const signInWithGoogle = () => {
+    window.location.href = `${API_BASE}/auth/google`;
   };
 
   const signOut = () => persist(null, null);
 
+  const _setUser = (nextUser: AuthUser | null) => setUser(nextUser);
+
   return (
-    <AuthContext.Provider value={{ user, signUp, signIn, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, signUp, signIn, signInWithGoogle, signOut, _setUser }}>
       {children}
     </AuthContext.Provider>
   );

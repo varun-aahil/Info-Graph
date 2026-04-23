@@ -36,6 +36,10 @@ class Settings(BaseSettings):
             "http://127.0.0.1:8080",
         ]
     )
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+    frontend_url: str = "http://localhost:8080"
 
 
 @lru_cache
