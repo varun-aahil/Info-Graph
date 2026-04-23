@@ -118,20 +118,24 @@ export default function Dashboard() {
         ? { cluster_id: selectedClusterId }
         : null;
 
-  const refreshWorkspace = useCallback(async () => {
-    const [loadedDocuments, graph, settings] = await Promise.all([
+  const loadData = useCallback(async () => {
+    const [loadedDocuments, graph] = await Promise.all([
       fetchDocuments(),
       fetchGraphData(),
-      getWorkspaceSettings(),
     ]);
     setDocuments(loadedDocuments);
     setScatterData(graph.points);
     setClusters(graph.clusters);
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    const settings = await getWorkspaceSettings();
     setWorkspaceSettings(settings);
   }, []);
 
   useEffect(() => {
-    refreshWorkspace().catch((error) => {
+    loadSettings().catch(() => undefined);
+    loadData().catch((error) => {
       toast({
         title: 'Backend load failed',
         description: error instanceof Error ? error.message : 'Could not load workspace data.',
@@ -139,10 +143,10 @@ export default function Dashboard() {
       });
     });
     const intervalId = window.setInterval(() => {
-      refreshWorkspace().catch(() => undefined);
+      loadData().catch(() => undefined);
     }, 3000);
     return () => window.clearInterval(intervalId);
-  }, [refreshWorkspace]);
+  }, [loadData, loadSettings]);
 
   const handleImportUrl = async () => {
     const url = urlInput.trim();
@@ -154,7 +158,7 @@ export default function Dashboard() {
       setDocuments((current) => [document, ...current.filter((item) => item.id !== document.id)]);
       setUrlInput('');
       toast({ title: 'Import started', description: `${document.name} is being processed.` });
-      await refreshWorkspace();
+      await loadData();
     } catch (error) {
       toast({
         title: 'Import failed',
@@ -172,7 +176,7 @@ export default function Dashboard() {
       const saved = await updateWorkspaceSettings(workspaceSettings);
       setWorkspaceSettings(saved);
       toast({ title: 'Settings saved', description: 'Backend settings were updated.' });
-      await refreshWorkspace();
+      await loadData();
     } catch (error) {
       toast({
         title: 'Settings save failed',
@@ -287,11 +291,11 @@ export default function Dashboard() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="upload">
-              <UploadPanel
-                documents={documents}
-                onDocumentsChange={setDocuments}
-                onUploadComplete={refreshWorkspace}
-              />
+                <UploadPanel
+                  documents={documents}
+                  onDocumentsChange={setDocuments}
+                  onUploadComplete={loadData}
+                />
             </TabsContent>
             <TabsContent value="url">
               <div className="flex flex-col gap-3">

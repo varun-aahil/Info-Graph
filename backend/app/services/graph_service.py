@@ -36,6 +36,10 @@ def _cluster_embeddings(vectors: np.ndarray, workspace_settings: WorkspaceSettin
     return model.fit_predict(vectors)
 
 
+import umap
+from sklearn.decomposition import PCA
+
+
 def _project_embeddings(vectors: np.ndarray) -> np.ndarray:
     if len(vectors) == 0:
         return np.zeros((0, 2))
@@ -44,8 +48,14 @@ def _project_embeddings(vectors: np.ndarray) -> np.ndarray:
     if vectors.shape[1] == 1:
         return np.column_stack((vectors[:, 0], np.zeros(len(vectors))))
 
-    pca = PCA(n_components=2, random_state=42)
-    return pca.fit_transform(vectors)
+    if len(vectors) < 4:
+        # Fallback to PCA for very small datasets where UMAP neighborhoods don't make sense
+        pca = PCA(n_components=2, random_state=42)
+        return pca.fit_transform(vectors)
+
+    n_neighbors = min(15, len(vectors) - 1)
+    reducer = umap.UMAP(n_neighbors=n_neighbors, n_components=2, metric="cosine", random_state=42)
+    return reducer.fit_transform(vectors)
 
 
 def refresh_graph(db: Session, workspace_settings: WorkspaceSettings, user_id: str) -> None:
