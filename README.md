@@ -1,106 +1,130 @@
-# InfoGraph 📊
+# InfoGraph
 
-**InfoGraph** is a cutting-edge SaaS platform for Visual Document Clustering & Retrieval-Augmented Generation (RAG). It enables users to upload documents, visualize their semantic groupings on an interactive 2D graph, and chat intelligently with specific document clusters securely without data bleed.
+**InfoGraph** is a full-stack SaaS platform for Visual Document Clustering and Retrieval-Augmented Generation (RAG). Upload your documents, watch them cluster semantically on an interactive 2D graph, then chat with any cluster using a context-aware AI assistant — all with strict per-user data isolation.
 
-## ✨ Core Features
+## Features
 
-*   **Semantic Document Clustering:** Utilizes Sentence-Transformers embeddings projected via PCA and clustered using powerful algorithms like DBSCAN, KMeans, or Hierarchical Agglomerative Clustering.
-*   **AI Auto-Titling:** Automatically labels generated clusters by analyzing the most representative text chunks and querying an LLM to determine the overarching topic.
-*   **Secure Contextual RAG:** Engage in a conversation with your documents. InfoGraph leverages PostgreSQL's native `pgvector` to perform lightning-fast similarity searches securely bounded by `user_id` and `cluster_id`.
-*   **Streaming Chat Interface:** Real-time Server-Sent Events (SSE) streaming for AI chat responses, complete with exact document and chunk source citations.
-*   **Hybrid AI Support:** Seamlessly switch between cloud providers (OpenAI, Gemini) and local, privacy-first providers (Ollama).
+- **Semantic Clustering** — Sentence-Transformers embeddings projected via PCA, clustered with DBSCAN, KMeans, or Agglomerative Clustering
+- **AI Auto-Titling** — Clusters are automatically labelled by an LLM after each ingestion run
+- **Contextual RAG** — PostgreSQL `pgvector` similarity search scoped strictly by user and cluster, preventing data bleed
+- **Streaming Chat** — Server-Sent Events (SSE) deliver responses token-by-token with source citations
+- **Hybrid AI** — Swap between cloud providers (OpenAI / Gemini) and local models (Ollama) without changing any code
+- **Google OAuth** — Sign in with Google alongside email/password authentication
 
-## 🛠️ Technology Stack
+## Tech Stack
 
-### Backend
-*   **Framework:** FastAPI (Python)
-*   **Database:** PostgreSQL with `pgvector` extension
-*   **ORM & Migrations:** SQLAlchemy 2.0 & Alembic
-*   **Machine Learning:** `scikit-learn` (PCA, Clustering), `numpy`
-*   **Generative AI:** OpenAI Python SDK, `httpx` (for Ollama streaming)
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI, Python 3.10+ |
+| Database | PostgreSQL + pgvector |
+| ORM / Migrations | SQLAlchemy 2.0, Alembic |
+| ML | scikit-learn, numpy |
+| AI | OpenAI SDK, httpx (Ollama) |
+| Frontend | React, TypeScript, Vite |
+| UI | Tailwind CSS, shadcn/ui |
 
-### Frontend
-*   **Framework:** React + TypeScript (Vite)
-*   **Styling & UI:** Tailwind CSS, `shadcn/ui`
-
-## 🚀 Getting Started
+## Getting Started (Local Development)
 
 ### Prerequisites
-*   Node.js & npm
-*   Python 3.10+
-*   PostgreSQL (with the `pgvector` extension installed)
+- Node.js 18+ and npm
+- Python 3.10+
+- PostgreSQL with the `pgvector` extension
 
-### 1. Database Setup
-Ensure PostgreSQL is running and `pgvector` is enabled.
-Create a database named `infograph` (or update the `.env` file accordingly).
+### 1. Clone the repository
 
-### 2. Backend Installation
+```sh
+git clone https://github.com/varun-aahil/Info-Graph.git
+cd Info-Graph
+```
+
+### 2. Backend setup
+
 ```sh
 cd backend
 python -m venv .venv
 
-# On Windows
+# Windows
 .\.venv\Scripts\activate
-# On macOS/Linux
+# macOS / Linux
 source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-Set up your `.env` file in the `backend` directory (a sample is provided below):
-```ini
-DATABASE_URL=postgresql+psycopg://postgres:yourpassword@localhost:5432/infograph
-SECRET_KEY=your_super_secret_key
-OPENAI_API_KEY=your_openai_api_key
-OLLAMA_BASE_URL=http://localhost:11434
-CORS_ORIGINS=["http://localhost:8080","http://127.0.0.1:8080"]
+Copy the example environment file and fill in your values:
+
+```sh
+cp .env.example .env
 ```
 
-Apply database migrations:
+Run database migrations:
+
 ```sh
 alembic upgrade head
 ```
 
-Start the FastAPI server:
+Start the API server:
+
 ```sh
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Frontend Installation
-Open a new terminal window at the project root:
+### 3. Frontend setup
+
+Open a new terminal in the project root:
+
 ```sh
+cp .env.example .env          # set VITE_API_BASE_URL if needed
 npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:8080`.
+The app will be available at `http://localhost:8080`.
 
-## ☁️ Deploy for Free (Cloud Hosting)
+## Environment Variables
 
-You can easily host this entire stack for **free** using modern cloud providers:
+### Backend (`backend/.env`)
 
-### 1. Database: Supabase (Free Tier)
-1. Create a free account at [Supabase](https://supabase.com/).
-2. Create a new project and navigate to Database settings to retrieve your `DATABASE_URL` (Connection String).
-3. Supabase comes with `pgvector` pre-installed! Run your Alembic migrations against this database URL locally:
-   `DATABASE_URL="your-supabase-url" alembic upgrade head`
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SECRET_KEY` | Secret used to sign JWTs |
+| `OPENAI_API_KEY` | OpenAI / Gemini API key (optional if using Ollama) |
+| `OLLAMA_BASE_URL` | Ollama server URL |
+| `CORS_ORIGINS` | JSON array of allowed frontend origins |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_REDIRECT_URI` | Must match the URI registered in Google Cloud Console |
+| `FRONTEND_URL` | Base URL of the frontend (used for OAuth redirects) |
 
-### 2. Backend: Render (Free Web Service)
-1. Create a free account at [Render](https://render.com/).
-2. Connect your GitHub repository and create a new **Web Service**.
-3. Choose **Docker** as the environment (Render will automatically detect your `backend/Dockerfile`).
-4. Set the Root Directory to `backend` (if needed, though the Dockerfile handles context).
-5. Add your Environment Variables:
-   - `DATABASE_URL`: Your Supabase connection string
-   - `CORS_ORIGINS`: `["https://your-frontend-url.vercel.app"]`
-   - `OPENAI_API_KEY`: Your API key
+### Frontend (`.env`)
 
-### 3. Frontend: Vercel or Netlify (Free Tier)
-1. Connect your repository to [Vercel](https://vercel.com/) or Netlify.
-2. The platform will auto-detect Vite.
-3. Add the Environment Variable:
-   - `VITE_API_BASE_URL`: `https://your-backend-url.onrender.com/api/v1`
-4. Deploy!
+| Variable | Description |
+|---|---|
+| `VITE_API_BASE_URL` | Full base URL of the backend API, e.g. `https://api.example.com/api/v1` |
 
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
+## Free Cloud Deployment
+
+This stack can be deployed entirely for free using the following services:
+
+| Service | Provider |
+|---|---|
+| Database | [Supabase](https://supabase.com) — pgvector is pre-installed |
+| Backend | [Render](https://render.com) — deploy via Docker, free Web Service tier |
+| Frontend | [Vercel](https://vercel.com) — auto-detects Vite, free Hobby tier |
+
+### Steps
+
+1. **Supabase** — Create a project, copy the connection string, and run `alembic upgrade head` against it.
+2. **Render** — Connect the GitHub repo, select Docker environment, point Root Directory to `backend/`, and add environment variables.
+3. **Vercel** — Connect the GitHub repo, set `VITE_API_BASE_URL` to your Render backend URL, and deploy.
+
+Update `GOOGLE_REDIRECT_URI` and `FRONTEND_URL` in your Render environment variables to match your production URLs.
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome. Feel free to open an issue or submit a pull request.
+
+## License
+
+MIT

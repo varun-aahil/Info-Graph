@@ -211,7 +211,7 @@ export default function Landing() {
             Want to know more about this project?
           </p>
           <Button variant="outline" size="sm" className="gap-2" asChild>
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/varun-aahil/Info-Graph.git" target="_blank" rel="noopener noreferrer">
               <Github className="h-4 w-4" />
               View on GitHub
             </a>
