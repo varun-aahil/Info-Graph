@@ -75,5 +75,32 @@ npm run dev
 
 The frontend will be available at `http://localhost:8080`.
 
+## ☁️ Deploy for Free (Cloud Hosting)
+
+You can easily host this entire stack for **free** using modern cloud providers:
+
+### 1. Database: Supabase (Free Tier)
+1. Create a free account at [Supabase](https://supabase.com/).
+2. Create a new project and navigate to Database settings to retrieve your `DATABASE_URL` (Connection String).
+3. Supabase comes with `pgvector` pre-installed! Run your Alembic migrations against this database URL locally:
+   `DATABASE_URL="your-supabase-url" alembic upgrade head`
+
+### 2. Backend: Render (Free Web Service)
+1. Create a free account at [Render](https://render.com/).
+2. Connect your GitHub repository and create a new **Web Service**.
+3. Choose **Docker** as the environment (Render will automatically detect your `backend/Dockerfile`).
+4. Set the Root Directory to `backend` (if needed, though the Dockerfile handles context).
+5. Add your Environment Variables:
+   - `DATABASE_URL`: Your Supabase connection string
+   - `CORS_ORIGINS`: `["https://your-frontend-url.vercel.app"]`
+   - `OPENAI_API_KEY`: Your API key
+
+### 3. Frontend: Vercel or Netlify (Free Tier)
+1. Connect your repository to [Vercel](https://vercel.com/) or Netlify.
+2. The platform will auto-detect Vite.
+3. Add the Environment Variable:
+   - `VITE_API_BASE_URL`: `https://your-backend-url.onrender.com/api/v1`
+4. Deploy!
+
 ## 🤝 Contributing
 Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
