@@ -14,9 +14,11 @@ def get_or_create_workspace_settings(db: Session, user_id: str) -> WorkspaceSett
         return settings_row
 
     app_settings = get_settings()
+    # Default to local (Ollama) if no cloud API key is configured
+    default_provider = "cloud" if app_settings.openai_api_key else "local"
     settings_row = WorkspaceSettings(
         user_id=user_id,
-        model_provider="cloud",
+        model_provider=default_provider,
         cloud_api_key=app_settings.openai_api_key,
         cloud_base_url=app_settings.openai_base_url,
         cloud_chat_model=app_settings.openai_chat_model,
