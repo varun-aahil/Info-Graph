@@ -63,7 +63,7 @@ alembic upgrade head
 
 Start the FastAPI server:
 ```sh
-python -m uvicorn backend.app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 3. Frontend Installation
