@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -31,6 +31,35 @@ export default function UploadPanel({ documents, onDocumentsChange, onUploadComp
   const [isDragging, setIsDragging] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Re-render every second so the ETA updates live
+  useEffect(() => {
+    const hasProcessing = documents.some(d => d.status === 'processing');
+    if (!hasProcessing) return;
+    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, [documents]);
+
+  function getETA(doc: Document) {
+    if (doc.status !== 'processing' || doc.progress <= 0 || doc.progress >= 100) return null;
+
+    const elapsedMs = Date.now() - doc.uploadedAt.getTime();
+
+    // Wait until we have meaningful progress (>10%) and at least 3s elapsed
+    if (doc.progress <= 10 || elapsedMs < 3000) return 'Processing...';
+
+    const msPerPercent = elapsedMs / doc.progress;
+    const remainingMs = msPerPercent * (100 - doc.progress);
+
+    if (remainingMs > 3600000) return '> 1 hr left';
+    if (remainingMs < 2000) return 'Almost done...';
+
+    const mins = Math.floor(remainingMs / 60000);
+    const secs = Math.floor((remainingMs % 60000) / 1000);
+    if (mins > 0) return `~${mins}m ${secs}s left`;
+    return `~${secs}s left`;
+  }
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -163,7 +192,13 @@ export default function UploadPanel({ documents, onDocumentsChange, onUploadComp
                   <p className="truncate text-xs text-foreground">{doc.name}</p>
                   <p className="text-[10px] text-muted-foreground">{formatSize(doc.size)}</p>
                   {doc.status !== 'ready' && doc.status !== 'error' && (
-                    <Progress value={doc.progress} className="mt-1 h-0.5" />
+                    <div className="mt-1">
+                      <div className="flex justify-between items-center text-[10px] text-muted-foreground mb-0.5">
+                         <span>{Math.round(doc.progress)}%</span>
+                         <span>{getETA(doc) || ''}</span>
+                      </div>
+                      <Progress value={doc.progress} className="h-1" />
+                    </div>
                   )}
                   {doc.status === 'error' && doc.errorMessage && (
                     <p className="mt-1 line-clamp-2 text-[10px] text-destructive">{doc.errorMessage}</p>

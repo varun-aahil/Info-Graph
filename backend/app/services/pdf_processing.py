@@ -5,9 +5,15 @@ from pypdf import PdfReader
 
 def extract_pdf_text(stored_path: str) -> str:
     try:
-        reader = PdfReader(Path(stored_path))
-        pages = [page.extract_text() or "" for page in reader.pages]
-        text = "\n".join(part.strip() for part in pages if part.strip()).strip()
+        text = ""
+        try:
+            reader = PdfReader(Path(stored_path))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            text = "\n".join(part.strip() for part in pages if part.strip()).strip()
+        except Exception as read_err:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"PyPDF2 failed to read document, falling back to OCR: {str(read_err)}")
         
         if not text:
             # Fallback to OCR for scanned PDFs

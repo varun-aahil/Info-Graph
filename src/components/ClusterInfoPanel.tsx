@@ -21,9 +21,13 @@ export default function ClusterInfoPanel({
 }: ClusterInfoPanelProps) {
   if (selectedClusterId === null && !selectedPoint) return null;
 
-  const cluster = selectedClusterId !== null && selectedClusterId >= 0
+  const cluster = selectedClusterId !== null
     ? clusters.find((c) => c.id === selectedClusterId)
     : null;
+
+  const clusterLabel = cluster?.label
+    ?? selectedPoint?.clusterLabel
+    ?? (selectedClusterId !== null ? `Cluster ${selectedClusterId + 1}` : 'Cluster');
 
   const isAnomaly = selectedPoint?.isAnomaly || selectedClusterId === -1;
 
@@ -44,7 +48,7 @@ export default function ClusterInfoPanel({
           </div>
           <div>
             <h4 className="text-sm font-semibold text-foreground">
-              {isAnomaly ? 'Outlier Document' : cluster?.label ?? 'Unknown Cluster'}
+              {isAnomaly ? 'Outlier Document' : clusterLabel}
             </h4>
             {cluster && (
               <p className="text-xs text-muted-foreground">

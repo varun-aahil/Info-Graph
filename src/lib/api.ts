@@ -91,6 +91,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
     headers: {
       ...(options?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
@@ -164,7 +166,11 @@ function toDocument(doc: BackendDocument): Document {
     size: doc.file_size,
     status: doc.status,
     progress: doc.progress,
-    uploadedAt: new Date(doc.uploaded_at),
+    uploadedAt: new Date(
+      doc.uploaded_at.includes('Z') || doc.uploaded_at.includes('+') 
+        ? doc.uploaded_at 
+        : `${doc.uploaded_at}Z`
+    ),
     errorMessage: doc.error_message ?? undefined,
   };
 }

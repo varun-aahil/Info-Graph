@@ -110,8 +110,24 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
 
             document.processed_at = datetime.utcnow()
             _update_stage(document, job, status="ready", stage="completed", progress=100)
-            refresh_graph(db, workspace_settings, document.user_id)
             db.commit()
+
+            # Graph refresh is done separately so a deadlock here
+            # does NOT roll back the document's "ready" status.
+            import time as _time
+            for attempt in range(3):
+                try:
+                    refresh_graph(db, workspace_settings, document.user_id)
+                    db.commit()
+                    break
+                except Exception as graph_exc:
+                    db.rollback()
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "refresh_graph attempt %d failed: %s", attempt + 1, graph_exc
+                    )
+                    if attempt < 2:
+                        _time.sleep(1)
         except Exception as exc:
             db.rollback()
             document = db.get(Document, document_id)

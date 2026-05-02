@@ -31,7 +31,7 @@ def _cluster_embeddings(vectors: np.ndarray, workspace_settings: WorkspaceSettin
     if method == "kmeans":
         n_clusters = max(2, min(count // 2, 5))
         model = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-        return model.fit_predict(vectors)
+        labels = model.fit_predict(vectors)
 
     elif method == "dbscan":
         # DBSCAN: density-based — outliers get label -1 (noise)
@@ -45,20 +45,29 @@ def _cluster_embeddings(vectors: np.ndarray, workspace_settings: WorkspaceSettin
         if np.all(labels < 0):
             logger.warning("DBSCAN assigned all points to noise — falling back to kmeans")
             n_clusters = max(2, min(count // 2, 5))
-            return KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(vectors)
-        return labels
+            labels = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(vectors)
 
     elif method == "hierarchical":
         # Agglomerative clustering using a distance threshold to naturally find clusters
         # A threshold of 0.4 means items must be somewhat similar to be clustered
         model = AgglomerativeClustering(n_clusters=None, distance_threshold=0.4, metric="cosine", linkage="average")
-        return model.fit_predict(vectors)
+        labels = model.fit_predict(vectors)
 
     else:
         # Unknown method — default to kmeans
         logger.warning("Unknown clustering method '%s', falling back to kmeans", method)
         n_clusters = max(2, min(count // 2, 5))
-        return KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(vectors)
+        labels = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(vectors)
+
+    # Post-process to enforce min_cluster_size
+    min_size = workspace_settings.min_cluster_size
+    if min_size > 1:
+        counts = Counter(labels)
+        for i in range(len(labels)):
+            if labels[i] >= 0 and counts[labels[i]] < min_size:
+                labels[i] = -1
+
+    return labels
 
 
 def _project_embeddings(vectors: np.ndarray) -> np.ndarray:

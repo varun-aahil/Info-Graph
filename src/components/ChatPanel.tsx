@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { sendChatMessage, type ChatSelection } from '@/lib/api';
 import type { ChatMessage } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatPanelProps {
   clusterContext: string | null;
@@ -53,8 +54,14 @@ export default function ChatPanel({ clusterContext, hasSelection, selection, ses
     }
   }, [sessionId, selection]);
 
+  const prevMsgCountRef = useRef(messages.length);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only auto-scroll when a new message is actually added, not on re-renders
+    if (messages.length > prevMsgCountRef.current || isTyping) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMsgCountRef.current = messages.length;
   }, [messages, isTyping]);
 
   const handleSend = async () => {
@@ -140,13 +147,15 @@ export default function ChatPanel({ clusterContext, hasSelection, selection, ses
                 )}
               </div>
               <div
-                className={`max-w-[85%] rounded-xl px-3 py-2.5 text-[13px] leading-relaxed ${
+                className={`max-w-[85%] rounded-xl px-4 py-3 text-[13px] leading-relaxed ${
                   msg.role === 'user'
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-muted text-foreground'
                 }`}
               >
-                {msg.content}
+                <ReactMarkdown className={`prose prose-sm max-w-none ${msg.role === 'user' ? 'prose-invert' : 'dark:prose-invert'} prose-p:leading-relaxed prose-pre:p-0`}>
+                  {msg.content}
+                </ReactMarkdown>
               </div>
             </div>
           ))}

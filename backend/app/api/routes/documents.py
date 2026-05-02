@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.api.deps import get_current_active_user
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
-from backend.app.models.entities import Document, IngestionJob, User, generate_uuid
+from backend.app.models.entities import ChatSession, Document, IngestionJob, User, generate_uuid
 from backend.app.schemas.documents import DocumentResponse, ImportUrlRequest, UploadDocumentsResponse
 from backend.app.services.file_storage import delete_file, download_pdf_from_url, store_pdf_bytes
 from backend.app.services.graph_service import refresh_graph
@@ -174,6 +174,17 @@ def delete_document(
     )
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
+    # Delete any chat sessions associated with this document
+    linked_sessions = db.scalars(
+        select(ChatSession).where(
+            ChatSession.user_id == current_user.id,
+            ChatSession.session_type == "document",
+            ChatSession.target_id == document_id,
+        )
+    ).all()
+    for session in linked_sessions:
+        db.delete(session)
 
     stored_path = document.stored_path
     db.delete(document)

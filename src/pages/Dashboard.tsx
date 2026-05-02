@@ -121,6 +121,8 @@ export default function Dashboard() {
   const [chatSessions, setChatSessions] = useState<import('@/lib/api').ChatSessionResponse[]>([]);
   const [isChatSessionsLoading, setIsChatSessionsLoading] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<import('@/lib/api').ChatSessionResponse | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   const hasSelection = selectedClusterId !== null || selectedPoint !== null;
 
@@ -177,12 +179,17 @@ export default function Dashboard() {
 
   const handleDeleteSession = async (session: import('@/lib/api').ChatSessionResponse, e: React.MouseEvent) => {
     e.stopPropagation();
+    setSessionToDelete(session);
+  };
+
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    setIsDeletingSession(true);
     try {
       const { deleteChatSession } = await import('@/lib/api');
-      await deleteChatSession(session.id);
+      await deleteChatSession(sessionToDelete.id);
       
-      // If the currently open chat is deleted, close/reset it
-      if (currentSessionId === session.id) {
+      if (currentSessionId === sessionToDelete.id) {
         setCurrentSessionId(null);
         setSelectedPoint(null);
         setSelectedClusterId(null);
@@ -191,6 +198,9 @@ export default function Dashboard() {
       loadSessions();
     } catch (error) {
       console.error('Failed to delete session', error);
+    } finally {
+      setIsDeletingSession(false);
+      setSessionToDelete(null);
     }
   };
 
@@ -230,8 +240,11 @@ export default function Dashboard() {
   }, [loadData, loadSettings, loadSessions]);
 
   useEffect(() => {
+    const readyDocsCount = documents.filter(d => d.status === 'ready').length;
     const hasProcessing = documents.some(d => d.status === 'queued' || d.status === 'processing');
-    if (!hasProcessing) return;
+    const isGraphOutOfSync = readyDocsCount !== scatterData.length;
+    
+    if (!hasProcessing && !isGraphOutOfSync) return;
 
     const intervalId = window.setInterval(() => {
       loadData().catch(() => undefined);
@@ -390,7 +403,7 @@ export default function Dashboard() {
                 <UploadPanel
                   documents={documents}
                   onDocumentsChange={setDocuments}
-                  onUploadComplete={loadData}
+                  onUploadComplete={() => { loadData(); loadSessions(); }}
                 />
             </TabsContent>
             <TabsContent value="url">
@@ -575,10 +588,10 @@ export default function Dashboard() {
               {/* Chat panel */}
               <aside
                 className={`shrink-0 border-l border-border bg-card transition-all duration-300 ease-in-out overflow-hidden ${
-                  chatOpen ? 'w-80' : 'w-0'
+                  chatOpen ? 'w-[400px]' : 'w-0'
                 }`}
               >
-                <div className="flex h-full w-80 flex-col">
+                <div className="flex h-full w-[400px] flex-col">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <h3 className="text-sm font-semibold text-foreground">
                       {chatMode === 'document' && selectedPoint ? 'Document Chat' : 'Cluster Analysis'}
@@ -618,6 +631,37 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      {/* Chat Delete Confirmation Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-lg bg-card p-6 shadow-lg border border-border">
+            <h3 className="text-lg font-semibold text-foreground">Delete Chat</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Are you sure you want to delete this chat? This action cannot be undone.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground truncate">
+              {sessionToDelete.title || 'Untitled Chat'}
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setSessionToDelete(null)}
+                disabled={isDeletingSession}
+                className="rounded-md px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSession}
+                disabled={isDeletingSession}
+                className="flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
+              >
+                {isDeletingSession && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isDeletingSession ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
