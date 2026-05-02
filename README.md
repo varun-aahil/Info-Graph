@@ -1,130 +1,55 @@
 # InfoGraph
 
-**InfoGraph** is a full-stack SaaS platform for Visual Document Clustering and Retrieval-Augmented Generation (RAG). Upload your documents, watch them cluster semantically on an interactive 2D graph, then chat with any cluster using a context-aware AI assistant — all with strict per-user data isolation.
+Welcome to **InfoGraph** — a next-generation visual knowledge engine designed to help you organize, explore, and converse with massive collections of unstructured documents.
 
-## Features
+By combining cutting-edge high-dimensional data clustering with Interactive Retrieval-Augmented Generation (RAG), InfoGraph transforms your raw PDFs into an interactive, explorable universe.
 
-- **Semantic Clustering** — Sentence-Transformers embeddings projected via PCA, clustered with DBSCAN, KMeans, or Agglomerative Clustering
-- **AI Auto-Titling** — Clusters are automatically labelled by an LLM after each ingestion run
-- **Contextual RAG** — PostgreSQL `pgvector` similarity search scoped strictly by user and cluster, preventing data bleed
-- **Streaming Chat** — Server-Sent Events (SSE) deliver responses token-by-token with source citations
-- **Hybrid AI** — Swap between cloud providers (OpenAI / Gemini) and local models (Ollama) without changing any code
-- **Google OAuth** — Sign in with Google alongside email/password authentication
+---
 
-## Tech Stack
+## 🌟 Key Features
 
-| Layer | Technology |
-|---|---|
-| Backend | FastAPI, Python 3.10+ |
-| Database | PostgreSQL + pgvector |
-| ORM / Migrations | SQLAlchemy 2.0, Alembic |
-| ML | scikit-learn, numpy |
-| AI | OpenAI SDK, httpx (Ollama) |
-| Frontend | React, TypeScript, Vite |
-| UI | Tailwind CSS, shadcn/ui |
+### 1. Visual Document Clustering
+Upload your documents and watch them organize themselves. InfoGraph automatically computes semantic embeddings for every document and projects them onto an interactive 2D scatter plot using advanced clustering algorithms (like DBSCAN or K-Means).
+- Spot hidden relationships between documents at a glance.
+- Identify outliers and distinct topic groups immediately.
+- Visually navigate through hundreds of files without losing context.
 
-## Getting Started (Local Development)
+### 2. Auto-Titling Intelligence
+You don't need to manually label anything. Once a cluster is formed, our built-in LLM pipeline analyzes the semantic contents of the group and automatically assigns a highly descriptive, human-readable title. 
 
-### Prerequisites
-- Node.js 18+ and npm
-- Python 3.10+
-- PostgreSQL with the `pgvector` extension
+### 3. Contextual Chat (Interactive RAG)
+Click on any cluster, or any individual document node, to open a focused chat window. 
+- Ask questions and get precise answers derived *only* from that specific cluster or document.
+- The AI assistant streams responses token-by-token.
+- Every answer is grounded in your source material, preventing hallucinations.
 
-### 1. Clone the repository
+### 4. Seamless Synchronization
+The interface is entirely reactive. Clicking on a previous chat session will automatically pan and zoom the scatter plot to the exact document or cluster you were discussing, keeping you perfectly oriented within your knowledge graph.
 
-```sh
-git clone https://github.com/varun-aahil/Info-Graph.git
-cd Info-Graph
-```
+### 5. Universal Document Support & OCR
+Got scanned PDFs? No problem. InfoGraph includes a robust fallback OCR (Optical Character Recognition) pipeline. If a document lacks an encoded text layer, the system will automatically convert the pages to images and extract the text for you, ensuring nothing slips through the cracks.
 
-### 2. Backend setup
+### 6. Flexible AI Backend
+InfoGraph doesn't lock you into a single provider. You can hot-swap your intelligence layer directly from the Settings panel:
+- Use **Cloud Models** like OpenAI or Gemini for maximum speed and capability.
+- Switch to **Local Models** via Ollama for 100% private, offline processing where your data never leaves your machine.
 
-```sh
-cd backend
-python -m venv .venv
+### 7. Secure Multi-Tenant Architecture
+Built for scale, InfoGraph features full user authentication via Email OTPs and Google OAuth. Every user operates within their own isolated workspace—meaning embeddings, documents, and chat sessions are strictly private and sandboxed.
 
-# Windows
-.\.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
+---
 
-pip install -r requirements.txt
-```
+## 🛠 Tech Stack
 
-Copy the example environment file and fill in your values:
+InfoGraph is built using a modern, robust stack optimized for machine learning and real-time interactions:
 
-```sh
-cp .env.example .env
-```
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Graph Visualization:** Plotly.js
+- **Backend API:** FastAPI, Python 3.10+
+- **Database:** PostgreSQL with the `pgvector` extension
+- **Machine Learning:** scikit-learn, numpy, UMAP, Sentence-Transformers
+- **Document Processing:** PyMuPDF, pytesseract, pdf2image
 
-Run database migrations:
+---
 
-```sh
-alembic upgrade head
-```
-
-Start the API server:
-
-```sh
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-### 3. Frontend setup
-
-Open a new terminal in the project root:
-
-```sh
-cp .env.example .env          # set VITE_API_BASE_URL if needed
-npm install
-npm run dev
-```
-
-The app will be available at `http://localhost:8080`.
-
-## Environment Variables
-
-### Backend (`backend/.env`)
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SECRET_KEY` | Secret used to sign JWTs |
-| `OPENAI_API_KEY` | OpenAI / Gemini API key (optional if using Ollama) |
-| `OLLAMA_BASE_URL` | Ollama server URL |
-| `CORS_ORIGINS` | JSON array of allowed frontend origins |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | Must match the URI registered in Google Cloud Console |
-| `FRONTEND_URL` | Base URL of the frontend (used for OAuth redirects) |
-
-### Frontend (`.env`)
-
-| Variable | Description |
-|---|---|
-| `VITE_API_BASE_URL` | Full base URL of the backend API, e.g. `https://api.example.com/api/v1` |
-
-## Free Cloud Deployment
-
-This stack can be deployed entirely for free using the following services:
-
-| Service | Provider |
-|---|---|
-| Database | [Supabase](https://supabase.com) — pgvector is pre-installed |
-| Backend | [Render](https://render.com) — deploy via Docker, free Web Service tier |
-| Frontend | [Vercel](https://vercel.com) — auto-detects Vite, free Hobby tier |
-
-### Steps
-
-1. **Supabase** — Create a project, copy the connection string, and run `alembic upgrade head` against it.
-2. **Render** — Connect the GitHub repo, select Docker environment, point Root Directory to `backend/`, and add environment variables.
-3. **Vercel** — Connect the GitHub repo, set `VITE_API_BASE_URL` to your Render backend URL, and deploy.
-
-Update `GOOGLE_REDIRECT_URI` and `FRONTEND_URL` in your Render environment variables to match your production URLs.
-
-## Contributing
-
-Contributions, issues, and feature requests are welcome. Feel free to open an issue or submit a pull request.
-
-## License
-
-MIT
+*InfoGraph turns your unorganized data into an explorable, intelligent map.*

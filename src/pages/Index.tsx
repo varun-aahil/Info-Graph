@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Network, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import Logo from '@/components/Logo';
 import UploadPanel from '@/components/UploadPanel';
 import ScatterPlot from '@/components/ScatterPlot';
 import ClusterInfoPanel from '@/components/ClusterInfoPanel';
@@ -82,7 +83,7 @@ const Index = () => {
           </Tooltip>
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: 'var(--gradient-primary)' }}>
-              <Network className="h-4 w-4 text-primary-foreground" />
+              <Logo className="h-4 w-4 text-primary-foreground" />
             </div>
             <h1 className="text-lg font-bold font-['Space_Grotesk'] gradient-text">
               InfoGraph
@@ -102,9 +103,8 @@ const Index = () => {
       <div className="relative z-10 flex flex-1 overflow-hidden">
         {/* Left — Upload */}
         <aside
-          className={`glass-panel-strong shrink-0 border-r border-border/30 transition-all duration-300 ease-in-out overflow-hidden ${
-            sidebarOpen ? 'w-72 p-4' : 'w-0 p-0'
-          }`}
+          className={`glass-panel-strong shrink-0 border-r border-border/30 transition-all duration-300 ease-in-out overflow-hidden ${sidebarOpen ? 'w-72 p-4' : 'w-0 p-0'
+            }`}
         >
           <div className="w-64">
             <UploadPanel
@@ -139,9 +139,8 @@ const Index = () => {
 
         {/* Right — Chat (only visible when selection exists) */}
         <aside
-          className={`glass-panel-strong shrink-0 border-l border-border/30 transition-all duration-300 ease-in-out overflow-hidden ${
-            hasSelection ? 'w-80' : 'w-0'
-          }`}
+          className={`glass-panel-strong shrink-0 border-l border-border/30 transition-all duration-300 ease-in-out overflow-hidden ${hasSelection ? 'w-80' : 'w-0'
+            }`}
         >
           <div className="w-80 h-full">
             <ChatPanel

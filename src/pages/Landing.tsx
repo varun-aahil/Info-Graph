@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import AuthModal, { type AuthMode } from '@/components/AuthModal';
+import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
 import crystalHero from '@/assets/crystal-hero.png';
 
@@ -61,17 +62,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-foreground">
-              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
-              <circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1.5" />
-              <circle cx="19" cy="5" r="2" stroke="currentColor" strokeWidth="1.5" />
-              <circle cx="5" cy="19" r="2" stroke="currentColor" strokeWidth="1.5" />
-              <circle cx="19" cy="19" r="2" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="7" y1="6" x2="10" y2="10" stroke="currentColor" strokeWidth="1" />
-              <line x1="17" y1="6" x2="14" y2="10" stroke="currentColor" strokeWidth="1" />
-              <line x1="7" y1="18" x2="10" y2="14" stroke="currentColor" strokeWidth="1" />
-              <line x1="17" y1="18" x2="14" y2="14" stroke="currentColor" strokeWidth="1" />
-            </svg>
+            <Logo className="h-6 w-6 text-foreground" />
             <span className="text-lg font-semibold tracking-tight text-foreground">InfoGraph</span>
           </div>
 
