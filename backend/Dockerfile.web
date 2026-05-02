@@ -2,9 +2,12 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Only install libpq for psycopg — no build-essential, no tesseract, no poppler
+# Install libpq (psycopg), tesseract (OCR), and poppler (PDF-to-image)
+# No build-essential, no torch/CUDA — those are the heavy ones we skip
 RUN apt-get update && apt-get install -y \
     libpq-dev \
+    tesseract-ocr \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the lightweight requirements and install
