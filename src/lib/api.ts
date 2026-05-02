@@ -120,8 +120,8 @@ export async function registerUser(payload: {
   name: string;
   email: string;
   password: string;
-}): Promise<{ message: string; email: string }> {
-  return request<{ message: string; email: string }>('/auth/register', {
+}): Promise<AuthResponseDto> {
+  return request<AuthResponseDto>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

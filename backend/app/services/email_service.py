@@ -30,9 +30,12 @@ def send_otp_email(db: Session, user_id: str, email: str, purpose: str = "verify
     db.add(otp_record)
     db.commit()
     
+    # Always log OTP in development/testing (you can see this in Render logs)
+    logger.info(f"Generated OTP for {email}: {code}")
+    
     # Send Email
     if not settings.smtp_host or not settings.smtp_user or not settings.smtp_pass:
-        logger.warning(f"SMTP not configured. OTP for {email} is {code}. Skipping email dispatch.")
+        logger.warning(f"SMTP not configured. Skipping email dispatch.")
         return True
         
     try:

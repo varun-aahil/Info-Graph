@@ -47,7 +47,7 @@ def init_db() -> None:
             connection.execute(
                 text(
                     """
-                    INSERT INTO users (id, email, name, hashed_password, provider, is_active, created_at, updated_at)
+                    INSERT INTO users (id, email, name, hashed_password, provider, is_active, is_verified, created_at, updated_at)
                     VALUES (
                         :legacy_user_id,
                         'legacy@local.invalid',
@@ -55,6 +55,7 @@ def init_db() -> None:
                         'disabled',
                         'email',
                         false,
+                        true,
                         NOW(),
                         NOW()
                     )

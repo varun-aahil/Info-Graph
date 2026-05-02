@@ -92,7 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp: AuthContextValue['signUp'] = async ({ name, email, password }) => {
     const response = await registerUser({ name, email, password });
-    return response.email;
+    persist(mapBackendUser(response.user), response.access_token);
+    return response.user.email;
   };
 
   const signIn: AuthContextValue['signIn'] = async ({ email, password }) => {
