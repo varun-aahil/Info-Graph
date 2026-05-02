@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     message: str
     selection: ChatSelection
     history: list[ChatHistoryMessage] = Field(default_factory=list)
+    session_id: str | None = None
 
 
 class ChatSource(BaseModel):
@@ -37,4 +38,21 @@ class ChatResponse(BaseModel):
     role: str = "assistant"
     content: str
     timestamp: datetime
+    session_id: str | None = None
     sources: list[ChatSource] = Field(default_factory=list)
+
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    session_type: str
+    target_id: str
+    title: str | None
+    created_at: datetime
+    updated_at: datetime

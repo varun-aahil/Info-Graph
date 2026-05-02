@@ -37,3 +37,4 @@ app.include_router(api_router, prefix=settings.api_prefix)
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+    

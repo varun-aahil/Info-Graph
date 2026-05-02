@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Iterator
 
 import httpx
-from openai import OpenAI
 
 from backend.app.core.config import get_settings
 from backend.app.models.entities import WorkspaceSettings
@@ -19,11 +18,25 @@ class ModelProviderService:
             raise RuntimeError("Cloud API key is not configured.")
         return api_key
 
-    def _resolve_cloud_base_url(self, workspace_settings: WorkspaceSettings) -> str:
-        return (workspace_settings.cloud_base_url or self.app_settings.openai_base_url).strip()
+    def _resolve_cloud_base_url(self, workspace_settings: WorkspaceSettings) -> str | None:
+        """Return None for standard cloud providers — LiteLLM handles routing.
+        Only return a custom base URL if it's explicitly set and isn't a known
+        provider URL that would conflict with LiteLLM's native routing."""
+        # Standard providers: let LiteLLM route natively via model prefix
+        if workspace_settings.model_provider in ("gemini", "openai", "anthropic", "xai"):
+            return None
+        url = (workspace_settings.cloud_base_url or self.app_settings.openai_base_url or "").strip()
+        if not url or "generativelanguage" in url:
+            return None
+        return url
 
     def _resolve_cloud_chat_model(self, workspace_settings: WorkspaceSettings) -> str:
-        return (workspace_settings.cloud_chat_model or self.app_settings.openai_chat_model).strip()
+        model = (workspace_settings.cloud_chat_model or self.app_settings.openai_chat_model).strip()
+        if workspace_settings.model_provider == "gemini" and not model.startswith("gemini/"):
+            return f"gemini/{model}"
+        if workspace_settings.model_provider == "xai" and not model.startswith("xai/"):
+            return f"xai/{model}"
+        return model
 
     def _resolve_cloud_embedding_model(self, workspace_settings: WorkspaceSettings) -> str:
         return (workspace_settings.cloud_embedding_model or self.app_settings.openai_embedding_model).strip()
@@ -34,7 +47,7 @@ class ModelProviderService:
 
         if workspace_settings.model_provider == "local":
             return self._embed_with_ollama(texts, workspace_settings)
-        return self._embed_with_openai(texts, workspace_settings)
+        return self._embed_with_litellm(texts, workspace_settings)
 
     def chat_completion(
         self,
@@ -43,7 +56,7 @@ class ModelProviderService:
     ) -> str:
         if workspace_settings.model_provider == "local":
             return self._chat_with_ollama(messages, workspace_settings)
-        return self._chat_with_openai(messages, workspace_settings)
+        return self._chat_with_litellm(messages, workspace_settings)
 
     def stream_chat_completion(
         self,
@@ -52,54 +65,54 @@ class ModelProviderService:
     ) -> Iterator[str]:
         if workspace_settings.model_provider == "local":
             return self._stream_chat_with_ollama(messages, workspace_settings)
-        return self._stream_chat_with_openai(messages, workspace_settings)
+        return self._stream_chat_with_litellm(messages, workspace_settings)
 
-    def _embed_with_openai(
+    def _embed_with_litellm(
         self,
         texts: list[str],
         workspace_settings: WorkspaceSettings,
     ) -> list[list[float]]:
-        client = OpenAI(
-            api_key=self._resolve_cloud_api_key(workspace_settings),
-            base_url=self._resolve_cloud_base_url(workspace_settings),
-        )
-        response = client.embeddings.create(
+        import litellm
+        
+        response = litellm.embedding(
             model=self._resolve_cloud_embedding_model(workspace_settings),
+            api_key=self._resolve_cloud_api_key(workspace_settings),
+            api_base=self._resolve_cloud_base_url(workspace_settings),
             input=texts,
         )
-        return [item.embedding for item in response.data]
+        return [item["embedding"] for item in response.data]
 
-    def _chat_with_openai(
+    def _chat_with_litellm(
         self,
         messages: list[dict[str, str]],
         workspace_settings: WorkspaceSettings,
     ) -> str:
-        client = OpenAI(
-            api_key=self._resolve_cloud_api_key(workspace_settings),
-            base_url=self._resolve_cloud_base_url(workspace_settings),
-        )
-        response = client.chat.completions.create(
+        import litellm
+        
+        response = litellm.completion(
             model=self._resolve_cloud_chat_model(workspace_settings),
-            messages=messages,  # type: ignore[arg-type]
+            api_key=self._resolve_cloud_api_key(workspace_settings),
+            api_base=self._resolve_cloud_base_url(workspace_settings),
+            messages=messages,
         )
         return response.choices[0].message.content or ""
 
-    def _stream_chat_with_openai(
+    def _stream_chat_with_litellm(
         self,
         messages: list[dict[str, str]],
         workspace_settings: WorkspaceSettings,
     ) -> Iterator[str]:
-        client = OpenAI(
-            api_key=self._resolve_cloud_api_key(workspace_settings),
-            base_url=self._resolve_cloud_base_url(workspace_settings),
-        )
-        response = client.chat.completions.create(
+        import litellm
+
+        response = litellm.completion(
             model=self._resolve_cloud_chat_model(workspace_settings),
-            messages=messages,  # type: ignore[arg-type]
+            api_key=self._resolve_cloud_api_key(workspace_settings),
+            api_base=self._resolve_cloud_base_url(workspace_settings),
+            messages=messages,
             stream=True,
         )
         for chunk in response:
-            content = chunk.choices[0].delta.content  # type: ignore[union-attr]
+            content = chunk.choices[0].delta.content
             if content:
                 yield content
 

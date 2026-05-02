@@ -4,7 +4,7 @@ import logging
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from backend.app.models.entities import DocumentChunk, DocumentGraphPoint, WorkspaceSettings
+from backend.app.models.entities import Document, DocumentChunk, DocumentGraphPoint, WorkspaceSettings
 from backend.app.services.embeddings import ModelProviderService
 
 logger = logging.getLogger(__name__)
@@ -28,46 +28,75 @@ def auto_title_clusters(
         .distinct()
     ).all()
 
+    import re
+
     for cluster_id in cluster_ids:
-        # Retrieve the top 3 chunks for this cluster
-        chunks = db.scalars(
-            select(DocumentChunk)
-            .join(DocumentGraphPoint, DocumentChunk.document_id == DocumentGraphPoint.document_id)
+        # Check if cluster already has a custom name (not "Cluster X")
+        current_label = db.scalar(
+            select(DocumentGraphPoint.cluster_label)
+            .where(
+                DocumentGraphPoint.user_id == user_id,
+                DocumentGraphPoint.cluster_id == cluster_id
+            )
+            .limit(1)
+        )
+        if current_label and not re.match(r"^Cluster \d+$", current_label):
+            continue
+
+        documents = db.scalars(
+            select(Document)
+            .join(DocumentGraphPoint, Document.id == DocumentGraphPoint.document_id)
             .where(
                 DocumentGraphPoint.user_id == user_id,
                 DocumentGraphPoint.cluster_id == cluster_id,
             )
-            .limit(3)
         ).all()
 
-        if not chunks:
+        if not documents:
             continue
 
-        context = "\n\n".join(f"Snippet:\n{chunk.content}" for chunk in chunks)
-        prompt = (
-            "Read these document snippets. Generate a concise, 2-to-3 word topic label "
-            "that describes their shared theme. Return ONLY the label without any quotes or extra text."
-        )
-
-        messages = [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": context},
-        ]
-
-        try:
-            generated_label = provider_service.chat_completion(messages, workspace_settings).strip().strip('"').strip("'")
-            if not generated_label:
-                continue
-
-            db.execute(
-                update(DocumentGraphPoint)
-                .where(
-                    DocumentGraphPoint.user_id == user_id,
-                    DocumentGraphPoint.cluster_id == cluster_id,
-                )
-                .values(cluster_label=generated_label)
+        doc_names = [doc.original_name for doc in documents]
+        
+        has_api_key = bool((workspace_settings.cloud_api_key or "").strip())
+        is_local = workspace_settings.model_provider == "local"
+        
+        generated_label = ""
+        
+        if has_api_key or is_local:
+            context = "\n".join(f"- {name}" for name in doc_names)
+            prompt = (
+                "Provide a concise, 3-word category title for a folder containing these documents. "
+                "Return ONLY the title without any quotes, preambles, or extra text."
             )
-        except Exception as e:
-            logger.error(f"Failed to auto-title cluster {cluster_id}: {e}")
+            messages = [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": context},
+            ]
+            try:
+                generated_label = provider_service.chat_completion(messages, workspace_settings).strip().strip('"').strip("'")
+            except Exception as e:
+                # Rate-limit (429), auth errors, etc — do NOT crash, just use a clean default
+                logger.warning("Auto-title cluster %d failed: %s", cluster_id, e)
+                generated_label = f"Cluster {cluster_id + 1}"
+
+        if not generated_label:
+            if len(doc_names) == 1:
+                generated_label = doc_names[0][:50]
+            elif len(doc_names) == 2:
+                generated_label = f"{doc_names[0][:20]} & {doc_names[1][:20]}"
+            else:
+                generated_label = f"{doc_names[0][:20]}, {doc_names[1][:20]} & {len(doc_names) - 2} others"
+
+        # Truncate to 120 chars — the DB column is VARCHAR(128)
+        safe_label = str(generated_label)[:120]
+
+        db.execute(
+            update(DocumentGraphPoint)
+            .where(
+                DocumentGraphPoint.user_id == user_id,
+                DocumentGraphPoint.cluster_id == cluster_id,
+            )
+            .values(cluster_label=safe_label)
+        )
 
     db.flush()

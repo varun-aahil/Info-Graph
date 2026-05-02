@@ -9,7 +9,7 @@ import {
   type Document,
   type ScatterPoint,
   type ClusterInfo,
-} from '@/lib/mock-data';
+} from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 

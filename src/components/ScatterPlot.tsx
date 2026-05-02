@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import createPlotlyComponent from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
-import type { ScatterPoint, ClusterInfo } from '@/lib/mock-data';
+import type { ScatterPoint, ClusterInfo } from '@/lib/types';
 
 const Plot = createPlotlyComponent(Plotly);
 
@@ -11,17 +11,21 @@ interface ScatterPlotProps {
   onPointClick: (point: ScatterPoint) => void;
   onClusterSelect: (clusterId: number) => void;
   selectedClusterId: number | null;
+  selectedPointId: string | null;
 }
 
 const CLUSTER_COLORS = [
-  'hsl(250, 75%, 70%)',
-  'hsl(200, 55%, 60%)',
-  'hsl(170, 50%, 50%)',
-  'hsl(35, 80%, 60%)',
-  'hsl(330, 60%, 60%)',
+  '#6366f1', // indigo
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#3b82f6', // blue
+  '#ec4899', // pink
+  '#14b8a6', // teal
+  '#f97316', // orange
 ];
 
-const ANOMALY_COLOR = 'hsl(0, 70%, 60%)';
+// Fix #3: Noise/anomaly nodes get a subtle neutral gray, not aggressive red
+const NOISE_COLOR = '#94a3b8'; // slate-400 — visible but non-alarming
 
 export default function ScatterPlot({
   data,
@@ -29,20 +33,94 @@ export default function ScatterPlot({
   onPointClick,
   onClusterSelect,
   selectedClusterId,
+  selectedPointId,
 }: ScatterPlotProps) {
+  // Fix #2: Track zoom domain state for cluster-level zooming
+  const [xDomain, setXDomain] = useState<[number, number] | null>(null);
+  const [yDomain, setYDomain] = useState<[number, number] | null>(null);
+
+  // Fix #2: Compute full data extent with 10% padding
+  const fullExtent = useMemo(() => {
+    if (data.length === 0) return { x: [-5, 5] as [number, number], y: [-5, 5] as [number, number] };
+    const xs = data.map((p) => p.x);
+    const ys = data.map((p) => p.y);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    const xMargin = (xMax - xMin) * 0.1 || 1;
+    const yMargin = (yMax - yMin) * 0.1 || 1;
+    return {
+      x: [xMin - xMargin, xMax + xMargin] as [number, number],
+      y: [yMin - yMargin, yMax + yMargin] as [number, number],
+    };
+  }, [data]);
+
+  // Fix #2: Zoom to cluster with 15% breathing room
+  const zoomToCluster = useCallback(
+    (clusterId: number) => {
+      const clusterPoints = data.filter((p) =>
+        clusterId < 0 ? p.isAnomaly : p.cluster === clusterId
+      );
+      if (clusterPoints.length === 0) return;
+
+      const xs = clusterPoints.map((p) => p.x);
+      const ys = clusterPoints.map((p) => p.y);
+      const xMin = Math.min(...xs);
+      const xMax = Math.max(...xs);
+      const yMin = Math.min(...ys);
+      const yMax = Math.max(...ys);
+      // 45% margin on each side so edge nodes aren't clipped when zoomed
+      const xMargin = Math.max((xMax - xMin) * 0.45, 0.5);
+      const yMargin = Math.max((yMax - yMin) * 0.45, 0.5);
+
+      setXDomain([xMin - xMargin, xMax + xMargin]);
+      setYDomain([yMin - yMargin, yMax + yMargin]);
+    },
+    [data]
+  );
+
+  const zoomToPoint = useCallback(
+    (pointId: string) => {
+      const point = data.find((p) => p.id === pointId);
+      if (!point) return;
+
+      const margin = 1.0;
+      setXDomain([point.x - margin, point.x + margin]);
+      setYDomain([point.y - margin, point.y + margin]);
+    },
+    [data]
+  );
+
+  useEffect(() => {
+    if (selectedClusterId !== null) {
+      zoomToCluster(selectedClusterId);
+    } else if (selectedPointId !== null) {
+      zoomToPoint(selectedPointId);
+    } else {
+      setXDomain(null);
+      setYDomain(null);
+    }
+  }, [selectedClusterId, selectedPointId, zoomToCluster, zoomToPoint]);
+
+  const resetZoom = useCallback(() => {
+    setXDomain(null);
+    setYDomain(null);
+  }, []);
+
   const traces = useMemo(() => {
     const grouped: Record<string, ScatterPoint[]> = {};
     data.forEach((p) => {
-      const key = p.isAnomaly ? 'Anomaly' : p.clusterLabel;
+      const key = p.isAnomaly ? 'Noise / Outliers' : p.clusterLabel;
       (grouped[key] ??= []).push(p);
     });
 
     return Object.entries(grouped).map(([label, points]) => {
-      const isAnomaly = label === 'Anomaly';
-      const clusterId = isAnomaly ? -1 : points[0].cluster;
-      const color = isAnomaly
-        ? ANOMALY_COLOR
-        : CLUSTER_COLORS[clusterId % CLUSTER_COLORS.length];
+      const isNoise = label === 'Noise / Outliers';
+      const clusterId = isNoise ? -1 : points[0].cluster;
+      const colorIndex = clusterId < 0 ? 0 : clusterId % CLUSTER_COLORS.length;
+      // Fix #3: Noise uses neutral gray, regular clusters use vibrant colors
+      const color = isNoise ? NOISE_COLOR : CLUSTER_COLORS[colorIndex];
       const isSelected = selectedClusterId === clusterId;
 
       return {
@@ -56,18 +134,16 @@ export default function ScatterPlot({
         type: 'scatter' as const,
         mode: 'markers' as const,
         marker: {
-          size: isAnomaly ? 14 : isSelected ? 13 : 10,
+          // Fix #3: Noise nodes are circles (not diamonds), slightly smaller
+          size: isNoise ? 10 : isSelected ? 16 : 14,
           color,
-          opacity: selectedClusterId !== null && !isSelected ? 0.25 : 0.8,
+          opacity: selectedClusterId !== null && !isSelected ? 0.4 : isNoise ? 0.8 : 1,
           line: {
-            width: isAnomaly ? 2 : isSelected ? 2 : 0.5,
-            color: isAnomaly
-              ? 'rgba(220,80,80,0.5)'
-              : isSelected
-                ? 'rgba(0,0,0,0.2)'
-                : 'rgba(0,0,0,0.05)',
+            width: isNoise ? 1 : isSelected ? 2.5 : 1.5,
+            color: selectedClusterId !== null && !isSelected ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.4)',
           },
-          symbol: isAnomaly ? 'diamond' : 'circle',
+          // Fix #3: ALL nodes are circles — no red diamonds for noise
+          symbol: 'circle',
         },
         hoverinfo: 'text' as const,
         hoverlabel: {
@@ -79,23 +155,36 @@ export default function ScatterPlot({
     });
   }, [data, selectedClusterId]);
 
+  // Fix #1 & #2: Professional gridlines + padding + zoom domain
+  const activeXDomain = xDomain ?? fullExtent.x;
+  const activeYDomain = yDomain ?? fullExtent.y;
+
   const layout: Partial<Plotly.Layout> = {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    margin: { l: 50, r: 20, t: 20, b: 50 },
+    // Fix #1: Extra margin for axis labels
+    margin: { l: 55, r: 30, t: 25, b: 55 },
     xaxis: {
+      // Fix #1: Professional gridlines
       showgrid: true,
-      gridcolor: 'rgba(0,0,0,0.06)',
-      zerolinecolor: 'rgba(0,0,0,0.1)',
-      tickfont: { color: '#999', size: 10 },
-      title: { text: 'Data Info Flow', font: { color: '#999', size: 11 } },
+      gridcolor: 'rgba(128,128,128,0.3)',
+      griddash: 'dot',
+      zerolinecolor: 'rgba(128,128,128,0.4)',
+      zerolinewidth: 1,
+      tickfont: { color: '#999', size: 10, family: 'Inter' },
+      title: { text: 'Embedding Dimension 1', font: { color: '#888', size: 11, family: 'Inter' } },
+      // Fix #2: Dynamic zoom domain with padding
+      range: activeXDomain,
     },
     yaxis: {
       showgrid: true,
-      gridcolor: 'rgba(0,0,0,0.06)',
-      zerolinecolor: 'rgba(0,0,0,0.1)',
-      tickfont: { color: '#999', size: 10 },
-      title: { text: 'Cosine Similarity', font: { color: '#999', size: 11 } },
+      gridcolor: 'rgba(128,128,128,0.3)',
+      griddash: 'dot',
+      zerolinecolor: 'rgba(128,128,128,0.4)',
+      zerolinewidth: 1,
+      tickfont: { color: '#999', size: 10, family: 'Inter' },
+      title: { text: 'Embedding Dimension 2', font: { color: '#888', size: 11, family: 'Inter' } },
+      range: activeYDomain,
     },
     legend: {
       font: { color: '#666', size: 11, family: 'Inter' },
@@ -108,13 +197,13 @@ export default function ScatterPlot({
       yanchor: 'top',
       orientation: 'h' as const,
     },
-    dragmode: 'lasso',
+    dragmode: 'pan',
     autosize: true,
     hovermode: 'closest',
   };
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
       <Plot
         data={traces as any}
         layout={layout}
@@ -131,7 +220,9 @@ export default function ScatterPlot({
             const point = e.points[0].customdata as ScatterPoint;
             if (point) {
               onPointClick(point);
-              onClusterSelect(point.isAnomaly ? -1 : point.cluster);
+              const clusterId = point.isAnomaly ? -1 : point.cluster;
+              onClusterSelect(clusterId);
+              zoomToCluster(clusterId);
             }
           }
         }}

@@ -3,28 +3,55 @@ import { Send, Bot, User, MousePointerClick } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { sendChatMessage, type ChatSelection } from '@/lib/api';
-import type { ChatMessage } from '@/lib/mock-data';
+import type { ChatMessage } from '@/lib/types';
 import { toast } from '@/hooks/use-toast';
 
 interface ChatPanelProps {
   clusterContext: string | null;
-  hasSelection: boolean;
   selection: ChatSelection | null;
+  sessionId: string | null;
+  onSessionIdChange: (id: string) => void;
 }
 
-export default function ChatPanel({ clusterContext, hasSelection, selection }: ChatPanelProps) {
+export default function ChatPanel({ clusterContext, hasSelection, selection, sessionId, onSessionIdChange }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
       content:
-        'Welcome to InfoGraph! Click on a cluster or point on the scatter plot to start chatting about your documents.',
+        'Click a cluster or document to view its insights or ask questions.',
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (sessionId) {
+      import('@/lib/api').then(({ fetchChatMessages }) => {
+        fetchChatMessages(sessionId).then((msgs) => {
+          setMessages(
+            msgs.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              timestamp: new Date(m.created_at),
+            }))
+          );
+        });
+      });
+    } else {
+      setMessages([
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: 'Click a cluster or document to view its insights or ask questions.',
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [sessionId, selection]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,14 +67,38 @@ export default function ChatPanel({ clusterContext, hasSelection, selection }: C
       content: text,
       timestamp: new Date(),
     };
+    const botMsgId = crypto.randomUUID();
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
 
     try {
-      const reply = await sendChatMessage(text, selection, [...messages, userMsg]);
-      setMessages((prev) => [...prev, reply]);
+      const reply = await sendChatMessage(
+        text, 
+        selection, 
+        [...messages, userMsg],
+        (chunkText) => {
+          setIsTyping(false); // Stop typing indicator on first chunk
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === botMsgId);
+            if (exists) {
+              return prev.map((m) => (m.id === botMsgId ? { ...m, content: chunkText } : m));
+            }
+            return [...prev, { id: botMsgId, role: 'assistant', content: chunkText, timestamp: new Date() }];
+          });
+        },
+        sessionId ?? undefined,
+        (id) => onSessionIdChange(id)
+      );
+      
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.id === botMsgId);
+        if (exists) return prev.map((m) => (m.id === botMsgId ? reply : m));
+        return [...prev, reply];
+      });
     } catch (error) {
+      // Remove bot placeholder on error
+      setMessages((prev) => prev.filter((m) => m.id !== botMsgId));
       toast({
         title: 'Chat failed',
         description: error instanceof Error ? error.message : 'Could not get a response.',

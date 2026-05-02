@@ -6,6 +6,8 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from sentence_transformers import SentenceTransformer
+
 from backend.app.models.entities import Document, DocumentChunk, IngestionJob
 from backend.app.services.chunking import chunk_text
 from backend.app.services.embeddings import ModelProviderService
@@ -71,10 +73,25 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
             db.commit()
 
             workspace_settings = get_or_create_workspace_settings(db, document.user_id)
-            chunk_embeddings = provider_service.embed_texts(
-                [chunk.content for chunk in chunks],
-                workspace_settings,
-            )
+            
+            model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+            
+            chunk_texts = [chunk.content for chunk in chunks]
+            chunk_embeddings = []
+            
+            # Batch process embeddings to update progress smoothly (from 60 to 85)
+            batch_size = 5
+            total_chunks = len(chunk_texts)
+            for i in range(0, total_chunks, batch_size):
+                batch_texts = chunk_texts[i:i + batch_size]
+                batch_embeddings = model.encode(["search_document: " + t for t in batch_texts]).tolist()
+                chunk_embeddings.extend(batch_embeddings)
+                
+                # Calculate progress: 60 to 85
+                progress_step = 60 + int((len(chunk_embeddings) / total_chunks) * 25)
+                _update_stage(document, job, status="processing", stage="embedding", progress=progress_step)
+                db.commit()
+            
             for index, chunk in enumerate(chunks):
                 db.add(
                     DocumentChunk(
@@ -87,7 +104,7 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
                     )
                 )
 
-            document.document_embedding = np.mean(np.array(chunk_embeddings, dtype=float), axis=0).tolist()
+            document.document_embedding = model.encode("search_document: " + raw_text).tolist()
             _update_stage(document, job, status="processing", stage="embedded", progress=85)
             db.commit()
 

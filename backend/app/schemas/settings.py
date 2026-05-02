@@ -19,7 +19,7 @@ class WorkspaceSettingsResponse(BaseModel):
 
 
 class WorkspaceSettingsUpdate(BaseModel):
-    model_provider: str
+    model_provider: str  # validated in the route handler after normalization
     cloud_api_key: str
     cloud_base_url: str
     cloud_chat_model: str

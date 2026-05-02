@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 
-export type AuthMode = 'signup' | 'signin';
+export type AuthMode = 'signup' | 'signin' | 'otp';
 
 interface AuthModalProps {
   open: boolean;
@@ -17,12 +17,13 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', onSuccess }: AuthModalProps) {
-  const { signUp, signIn, signInWithGoogle } = useAuth();
+  const { signUp, signIn, signInWithGoogle, verifyOtp } = useAuth();
   const [mode, setMode] = useState<AuthMode>(defaultMode);
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otpCode, setOtpCode] = useState('');
 
   useEffect(() => {
     if (open) setMode(defaultMode);
@@ -32,6 +33,7 @@ export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', 
     setName('');
     setEmail('');
     setPassword('');
+    setOtpCode('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,8 +42,15 @@ export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', 
     setLoading(true);
     try {
       if (mode === 'signup') {
-        await signUp({ name, email, password });
-        toast({ title: 'Account created', description: `Welcome, ${name || email}!` });
+        const registeredEmail = await signUp({ name, email, password });
+        setEmail(registeredEmail);
+        setMode('otp');
+        toast({ title: 'Verification required', description: `We sent a code to ${registeredEmail}` });
+        setLoading(false);
+        return; // don't close modal yet
+      } else if (mode === 'otp') {
+        await verifyOtp({ email, otp_code: otpCode });
+        toast({ title: 'Account verified', description: `Welcome to InfoGraph!` });
       } else {
         await signIn({ email, password });
         toast({ title: 'Welcome back', description: email });
@@ -50,11 +59,16 @@ export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', 
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Please try again.';
       toast({
         title: 'Authentication failed',
-        description: err instanceof Error ? err.message : 'Please try again.',
+        description: msg,
         variant: 'destructive',
       });
+      // If sign in fails due to unverified email, switch to OTP mode
+      if (mode === 'signin' && msg.includes('Email not verified')) {
+        setMode('otp');
+      }
     } finally {
       setLoading(false);
     }
@@ -68,83 +82,120 @@ export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-2xl">
-            {isSignup ? 'Create your account' : 'Welcome back'}
+            {mode === 'signup' ? 'Create your account' : mode === 'otp' ? 'Verify your email' : 'Welcome back'}
           </DialogTitle>
           <DialogDescription>
-            {isSignup
+            {mode === 'signup'
               ? 'Sign up to start exploring your documents.'
+              : mode === 'otp'
+              ? `Enter the 6-digit code we sent to ${email}`
               : 'Sign in to continue to InfoGraph.'}
           </DialogDescription>
         </DialogHeader>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full gap-2"
-          onClick={signInWithGoogle}
-          disabled={loading}
-        >
-          <GoogleIcon />
-          Continue with Google
-        </Button>
+        {mode !== 'otp' && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={signInWithGoogle}
+              disabled={loading}
+            >
+              <GoogleIcon />
+              Continue with Google
+            </Button>
 
-        <div className="relative my-1">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-background px-2 text-muted-foreground">or with email</span>
-          </div>
-        </div>
+            <div className="relative my-1">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-background px-2 text-muted-foreground">or with email</span>
+              </div>
+            </div>
+          </>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          {isSignup && (
+          {mode === 'otp' ? (
             <div className="space-y-1.5">
-              <Label htmlFor="auth-name">Full name</Label>
+              <Label htmlFor="auth-otp">Verification Code</Label>
               <Input
-                id="auth-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Jane Doe"
+                id="auth-otp"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="123456"
                 required
-                autoComplete="name"
+                maxLength={6}
+                className="text-center text-2xl tracking-widest"
               />
             </div>
+          ) : (
+            <>
+              {isSignup && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="auth-name">Full name</Label>
+                  <Input
+                    id="auth-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Jane Doe"
+                    required
+                    autoComplete="name"
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-email">Email</Label>
+                <Input
+                  id="auth-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-password">Password</Label>
+                <Input
+                  id="auth-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                />
+              </div>
+            </>
           )}
-          <div className="space-y-1.5">
-            <Label htmlFor="auth-email">Email</Label>
-            <Input
-              id="auth-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoComplete="email"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="auth-password">Password</Label>
-            <Input
-              id="auth-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              minLength={6}
-              autoComplete={isSignup ? 'new-password' : 'current-password'}
-            />
-          </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isSignup ? 'Create account' : 'Sign in'}
+            {mode === 'signup' ? 'Create account' : mode === 'otp' ? 'Verify Email' : 'Sign in'}
           </Button>
         </form>
 
         <div className="text-center text-sm text-muted-foreground">
-          {isSignup ? (
+          {mode === 'otp' ? (
+            <button
+              type="button"
+              onClick={async () => {
+                import('@/lib/api').then((m) => m.resendOtp({ email })).then(() => {
+                  toast({ title: 'OTP Resent', description: `A new code was sent to ${email}` });
+                }).catch((err) => {
+                  toast({ title: 'Failed to resend', description: err.message, variant: 'destructive' });
+                });
+              }}
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Didn't receive a code? Resend
+            </button>
+          ) : isSignup ? (
             <>
               Already have an account?{' '}
               <button

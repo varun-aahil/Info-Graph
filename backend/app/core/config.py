@@ -16,9 +16,9 @@ class Settings(BaseSettings):
 
     app_name: str = "InfoGraph API"
     api_prefix: str = "/api/v1"
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/infograph"
+    database_url: str
     storage_dir: Path = Path("backend/data/uploads")
-    secret_key: str = "change-this-local-dev-secret"
+    secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     openai_api_key: str | None = None
@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     frontend_url: str = "http://localhost:8080"
+    
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_pass: str | None = None
+    smtp_from: str = "noreply@infograph.local"
 
 
 @lru_cache

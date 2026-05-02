@@ -1,5 +1,5 @@
-import type { ScatterPoint, ClusterInfo } from '@/lib/mock-data';
-import { AlertTriangle, Layers, FileText, X } from 'lucide-react';
+import type { ScatterPoint, ClusterInfo } from '@/lib/types';
+import { AlertTriangle, Layers, FileText, X, MessageCircle, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ClusterInfoPanelProps {
@@ -7,6 +7,8 @@ interface ClusterInfoPanelProps {
   clusters: ClusterInfo[];
   selectedClusterId: number | null;
   onClear: () => void;
+  onChatWithDocument: (point: ScatterPoint) => void;
+  onChatWithCluster: (clusterId: number) => void;
 }
 
 export default function ClusterInfoPanel({
@@ -14,6 +16,8 @@ export default function ClusterInfoPanel({
   clusters,
   selectedClusterId,
   onClear,
+  onChatWithDocument,
+  onChatWithCluster,
 }: ClusterInfoPanelProps) {
   if (selectedClusterId === null && !selectedPoint) return null;
 
@@ -29,7 +33,7 @@ export default function ClusterInfoPanel({
         <div className="flex items-start gap-3">
           <div
             className={`mt-0.5 rounded-lg p-2 ${
-              isAnomaly ? 'bg-red-50 text-destructive' : 'bg-muted'
+              isAnomaly ? 'bg-slate-100 text-slate-500' : 'bg-muted'
             }`}
           >
             {isAnomaly ? (
@@ -40,7 +44,7 @@ export default function ClusterInfoPanel({
           </div>
           <div>
             <h4 className="text-sm font-semibold text-foreground">
-              {isAnomaly ? 'Anomaly Detected' : cluster?.label ?? 'Unknown Cluster'}
+              {isAnomaly ? 'Outlier Document' : cluster?.label ?? 'Unknown Cluster'}
             </h4>
             {cluster && (
               <p className="text-xs text-muted-foreground">
@@ -58,6 +62,32 @@ export default function ClusterInfoPanel({
                 {selectedPoint.snippet}
               </p>
             )}
+
+            {/* Fix #4: Document vs Cluster chat routing buttons */}
+            <div className="mt-3 flex items-center gap-2">
+              {selectedPoint && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => onChatWithDocument(selectedPoint)}
+                >
+                  <MessageCircle className="h-3 w-3" />
+                  Chat with Document
+                </Button>
+              )}
+              {cluster && !isAnomaly && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 text-xs"
+                  onClick={() => onChatWithCluster(cluster.id)}
+                >
+                  <FolderOpen className="h-3 w-3" />
+                  Chat with Cluster
+                </Button>
+              )}
+            </div>
           </div>
         </div>
         <Button

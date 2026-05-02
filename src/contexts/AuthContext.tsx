@@ -4,6 +4,7 @@ import {
   loginUser,
   registerUser,
   setAccessToken,
+  verifyOtp as verifyOtpApi,
   type AuthUserDto,
 } from '@/lib/api';
 
@@ -19,11 +20,13 @@ export interface AuthUser {
 
 interface AuthContextValue {
   user: AuthUser | null;
-  signUp: (data: { name: string; email: string; password: string }) => Promise<void>;
+  signUp: (data: { name: string; email: string; password: string }) => Promise<string>;
   signIn: (data: { email: string; password: string }) => Promise<void>;
+  verifyOtp: (data: { email: string; otp_code: string }) => Promise<void>;
   signInWithGoogle: () => void;
   signOut: () => void;
   _setUser: (user: AuthUser | null) => void;
+  isInitialized: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -43,6 +46,7 @@ function mapBackendUser(user: AuthUserDto): AuthUser {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const persist = (nextUser: AuthUser | null, token?: string | null) => {
     setUser(nextUser);
@@ -63,15 +67,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token) {
       persist(null, null);
+      setIsInitialized(true);
       return;
     }
 
     fetchCurrentUser()
       .then((backendUser) => {
-        if (isMounted) persist(mapBackendUser(backendUser));
+        if (isMounted) {
+          persist(mapBackendUser(backendUser));
+          setIsInitialized(true);
+        }
       })
       .catch(() => {
-        if (isMounted) persist(null, null);
+        if (isMounted) {
+          persist(null, null);
+          setIsInitialized(true);
+        }
       });
 
     return () => {
@@ -81,11 +92,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp: AuthContextValue['signUp'] = async ({ name, email, password }) => {
     const response = await registerUser({ name, email, password });
-    persist(mapBackendUser(response.user), response.access_token);
+    return response.email;
   };
 
   const signIn: AuthContextValue['signIn'] = async ({ email, password }) => {
     const response = await loginUser({ email, password });
+    persist(mapBackendUser(response.user), response.access_token);
+  };
+
+  const verifyOtp: AuthContextValue['verifyOtp'] = async ({ email, otp_code }) => {
+    const response = await verifyOtpApi({ email, otp_code });
     persist(mapBackendUser(response.user), response.access_token);
   };
 
@@ -98,8 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const _setUser = (nextUser: AuthUser | null) => setUser(nextUser);
 
   return (
-    <AuthContext.Provider value={{ user, signUp, signIn, signInWithGoogle, signOut, _setUser }}>
-      {children}
+    <AuthContext.Provider value={{ user, isInitialized, signUp, signIn, verifyOtp, signInWithGoogle, signOut, _setUser }}>
+      {!isInitialized ? (
+        <div className="flex h-screen w-screen items-center justify-center bg-background">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

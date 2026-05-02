@@ -1,0 +1,54 @@
+import smtplib
+from email.message import EmailMessage
+import logging
+import random
+from datetime import datetime, timedelta
+
+from sqlalchemy.orm import Session
+
+from backend.app.core.config import get_settings
+from backend.app.models.entities import EmailOTP
+
+logger = logging.getLogger(__name__)
+
+def generate_otp_code() -> str:
+    return f"{random.randint(0, 999999):06d}"
+
+def send_otp_email(db: Session, user_id: str, email: str, purpose: str = "verify_email") -> bool:
+    settings = get_settings()
+    
+    # Generate OTP and store in DB
+    code = generate_otp_code()
+    expires = datetime.utcnow() + timedelta(minutes=15)
+    
+    otp_record = EmailOTP(
+        user_id=user_id,
+        otp_code=code,
+        purpose=purpose,
+        expires_at=expires
+    )
+    db.add(otp_record)
+    db.commit()
+    
+    # Send Email
+    if not settings.smtp_host or not settings.smtp_user or not settings.smtp_pass:
+        logger.warning(f"SMTP not configured. OTP for {email} is {code}. Skipping email dispatch.")
+        return True
+        
+    try:
+        msg = EmailMessage()
+        msg.set_content(f"Your Infograph verification code is: {code}\n\nThis code will expire in 15 minutes.")
+        msg['Subject'] = "Your Infograph Verification Code"
+        msg['From'] = settings.smtp_from
+        msg['To'] = email
+
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+            server.starttls()
+            server.login(settings.smtp_user, settings.smtp_pass)
+            server.send_message(msg)
+            
+        logger.info(f"OTP sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send OTP email: {e}")
+        return False
