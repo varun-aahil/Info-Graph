@@ -1,10 +1,12 @@
+import json
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+_DEFAULT_CORS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
 
 
 class Settings(BaseSettings):
@@ -29,14 +31,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_embedding_model: str = "nomic-embed-text"
     ollama_chat_model: str = "llama3.1:8b"
-    cors_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:8080",
-            "http://127.0.0.1:8080",
-        ]
-    )
+    # Stored as a plain string so pydantic-settings won't try json.loads()
+    cors_origins: str = _DEFAULT_CORS
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
@@ -48,9 +44,23 @@ class Settings(BaseSettings):
     smtp_pass: str | None = None
     smtp_from: str = "noreply@infograph.local"
 
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse cors_origins string into a list. Accepts JSON array or comma-separated."""
+        s = (self.cors_origins or "").strip()
+        if not s:
+            return _DEFAULT_CORS.split(",")
+        if s.startswith("["):
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                pass
+        return [u.strip() for u in s.split(",") if u.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
     settings.storage_dir.mkdir(parents=True, exist_ok=True)
     return settings
+
