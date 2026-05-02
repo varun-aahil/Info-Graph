@@ -46,6 +46,8 @@ class ModelProviderService:
             return []
 
         if workspace_settings.model_provider == "local":
+            if self.app_settings.app_mode == "web":
+                raise ValueError("Local models are not supported in the cloud deployment.")
             return self._embed_with_ollama(texts, workspace_settings)
         return self._embed_with_litellm(texts, workspace_settings)
 
@@ -55,6 +57,8 @@ class ModelProviderService:
         workspace_settings: WorkspaceSettings,
     ) -> str:
         if workspace_settings.model_provider == "local":
+            if self.app_settings.app_mode == "web":
+                raise ValueError("Local models are not supported in the cloud deployment.")
             return self._chat_with_ollama(messages, workspace_settings)
         return self._chat_with_litellm(messages, workspace_settings)
 
@@ -64,6 +68,8 @@ class ModelProviderService:
         workspace_settings: WorkspaceSettings,
     ) -> Iterator[str]:
         if workspace_settings.model_provider == "local":
+            if self.app_settings.app_mode == "web":
+                raise ValueError("Local models are not supported in the cloud deployment.")
             return self._stream_chat_with_ollama(messages, workspace_settings)
         return self._stream_chat_with_litellm(messages, workspace_settings)
 

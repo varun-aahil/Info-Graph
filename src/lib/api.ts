@@ -1,6 +1,7 @@
 import type { ChatMessage, ClusterInfo, Document, ScatterPoint } from './types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
+export const APP_MODE = import.meta.env.VITE_APP_MODE ?? 'local'; // 'local' or 'web'
 const TOKEN_STORAGE_KEY = 'infograph_access_token';
 
 export interface AuthUserDto {

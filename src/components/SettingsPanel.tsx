@@ -3,7 +3,7 @@ import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { WorkspaceSettings } from '@/lib/api';
+import { APP_MODE, type WorkspaceSettings } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 interface SettingsPanelProps {
@@ -89,6 +89,10 @@ const PROVIDER_CONFIGS: Record<
     needsKey: false,
   },
 };
+
+if (APP_MODE === 'web') {
+  delete PROVIDER_CONFIGS.local;
+}
 
 type ProviderKey = keyof typeof PROVIDER_CONFIGS;
 
@@ -401,16 +405,18 @@ export default function SettingsPanel({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <label className="mb-1.5 block text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Embedding Model</label>
-                    <Input
-                      value={workspaceSettings.cloud_embedding_model}
-                      onChange={(e) =>
-                        setWorkspaceSettings((c) => ({ ...c, cloud_embedding_model: e.target.value }))
-                      }
-                      className="h-9 text-sm"
-                    />
-                  </div>
+                  {APP_MODE !== 'web' && (
+                    <div>
+                      <label className="mb-1.5 block text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Embedding Model</label>
+                      <Input
+                        value={workspaceSettings.cloud_embedding_model}
+                        onChange={(e) =>
+                          setWorkspaceSettings((c) => ({ ...c, cloud_embedding_model: e.target.value }))
+                        }
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

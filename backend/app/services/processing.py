@@ -6,7 +6,6 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from sentence_transformers import SentenceTransformer
 
 from backend.app.models.entities import Document, DocumentChunk, IngestionJob
 from backend.app.services.chunking import chunk_text
@@ -74,17 +73,22 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
 
             workspace_settings = get_or_create_workspace_settings(db, document.user_id)
             
-            model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
-            
             chunk_texts = [chunk.content for chunk in chunks]
             chunk_embeddings = []
             
             # Batch process embeddings to update progress smoothly (from 60 to 85)
-            batch_size = 5
+            batch_size = 10 if workspace_settings.model_provider != "local" else 5
             total_chunks = len(chunk_texts)
             for i in range(0, total_chunks, batch_size):
                 batch_texts = chunk_texts[i:i + batch_size]
-                batch_embeddings = model.encode(["search_document: " + t for t in batch_texts]).tolist()
+                
+                # Nomic local models use search_document prefix
+                if workspace_settings.model_provider == "local":
+                    embed_input = ["search_document: " + t for t in batch_texts]
+                else:
+                    embed_input = batch_texts
+                
+                batch_embeddings = provider_service.embed_texts(embed_input, workspace_settings)
                 chunk_embeddings.extend(batch_embeddings)
                 
                 # Calculate progress: 60 to 85
@@ -104,7 +108,12 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
                     )
                 )
 
-            document.document_embedding = model.encode("search_document: " + raw_text).tolist()
+            if workspace_settings.model_provider == "local":
+                doc_embed_input = ["search_document: " + raw_text]
+            else:
+                doc_embed_input = [raw_text]
+                
+            document.document_embedding = provider_service.embed_texts(doc_embed_input, workspace_settings)[0]
             _update_stage(document, job, status="processing", stage="embedded", progress=85)
             db.commit()
 

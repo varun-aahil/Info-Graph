@@ -3,17 +3,11 @@ from __future__ import annotations
 import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
-from sentence_transformers import SentenceTransformer
-
 from backend.app.models.entities import Document, DocumentChunk, DocumentGraphPoint
 from backend.app.schemas.chat import ChatSelection
 from backend.app.services.embeddings import ModelProviderService
 
 logger = logging.getLogger(__name__)
-
-# Load once at module import time — re-instantiating this 500MB model on every
-# query causes the container to OOM silently and retrieval returns 0 chunks.
-_EMBED_MODEL = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
 
 
 def resolve_selection(db: Session, selection: ChatSelection, user_id: str) -> tuple[list[str], str]:
@@ -57,8 +51,12 @@ def retrieve_relevant_chunks(
         logger.warning("resolve_selection returned empty doc_ids for selection %s", selection)
         return [], selection_label
 
-    # Use the module-level cached model — never re-instantiate inside this function
-    query_embedding = _EMBED_MODEL.encode("search_query: " + query).tolist()
+    if workspace_settings.model_provider == "local":
+        query_input = ["search_query: " + query]
+    else:
+        query_input = [query]
+        
+    query_embedding = provider_service.embed_texts(query_input, workspace_settings)[0]
 
     ranked_chunks = db.scalars(
         select(DocumentChunk)

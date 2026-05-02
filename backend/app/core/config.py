@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "InfoGraph API"
+    app_mode: str = "local" # "local" or "web"
     api_prefix: str = "/api/v1"
     database_url: str
     storage_dir: Path = Path("backend/data/uploads")

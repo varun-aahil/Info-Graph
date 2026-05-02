@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import AuthModal, { type AuthMode } from '@/components/AuthModal';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
+import { APP_MODE } from '@/lib/api';
 import crystalHero from '@/assets/crystal-hero.png';
 
 const features = [
@@ -25,8 +26,9 @@ const features = [
   {
     icon: ShieldCheck,
     title: 'Secure Processing',
-    description:
-      'Your documents never leave your environment. All semantic analysis and embedding generation runs locally with end-to-end encryption.',
+    description: APP_MODE === 'web'
+      ? 'Your documents are securely processed in the cloud using enterprise-grade encryption. No local resources required.'
+      : 'Your documents never leave your environment. All semantic analysis and embedding generation runs locally with end-to-end encryption.',
   },
 ];
 
