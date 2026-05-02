@@ -1,0 +1,24 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Only install libpq for psycopg — no build-essential, no tesseract, no poppler
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the lightweight requirements and install
+COPY requirements-web.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements-web.txt
+
+# Copy application code
+COPY . /app/backend
+
+# Set pythonpath so backend.app.main can be imported
+ENV PYTHONPATH=/app
+
+# Expose port
+EXPOSE 8000
+
+# Start command
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
