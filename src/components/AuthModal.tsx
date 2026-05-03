@@ -43,11 +43,11 @@ export default function AuthModal({ open, onOpenChange, defaultMode = 'signup', 
     try {
       if (mode === 'signup') {
         const registeredEmail = await signUp({ name, email, password });
-        toast({ title: 'Account created', description: `Welcome to InfoGraph, ${registeredEmail}!` });
-        reset();
-        onOpenChange(false);
-        onSuccess?.();
-        return;
+        setEmail(registeredEmail);
+        setMode('otp');
+        toast({ title: 'Verification required', description: `We sent a code to ${registeredEmail}` });
+        setLoading(false);
+        return; // don't close modal yet
       } else if (mode === 'otp') {
         await verifyOtp({ email, otp_code: otpCode });
         toast({ title: 'Account verified', description: `Welcome to InfoGraph!` });

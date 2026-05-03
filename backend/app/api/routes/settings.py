@@ -1,13 +1,22 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
 from sqlalchemy.orm import Session
 
 from backend.app.api.deps import get_current_active_user
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
 from backend.app.models.entities import User
-from backend.app.schemas.settings import WorkspaceSettingsResponse, WorkspaceSettingsUpdate
+from backend.app.schemas.settings import (
+    LocalModelInfo,
+    LocalModelRecommendation,
+    LocalModelsResponse,
+    PullLocalModelRequest,
+    PullLocalModelResponse,
+    WorkspaceSettingsResponse,
+    WorkspaceSettingsUpdate,
+)
 from backend.app.services.graph_service import refresh_graph
 from backend.app.services.settings_service import get_or_create_workspace_settings
 
@@ -16,6 +25,16 @@ router = APIRouter()
 
 ALLOWED_PROVIDERS = {"cloud", "local", "openai", "anthropic", "gemini", "xai"}
 ALLOWED_CLUSTERING_METHODS = {"kmeans", "dbscan", "hierarchical"}
+OLLAMA_LIBRARY_URL = "https://ollama.com/library"
+OLLAMA_DOWNLOAD_URL = "https://ollama.com/download"
+RECOMMENDED_EMBEDDING_MODELS = [
+    LocalModelRecommendation(name="nomic-embed-text", description="Default lightweight embedding model for local RAG."),
+    LocalModelRecommendation(name="nomic-embed-text-v2-moe", description="Newer multilingual Nomic embedding model compatible with the current 768-dim vector store."),
+]
+SUPPORTED_LOCAL_EMBEDDING_PREFIXES = (
+    "nomic-embed-text",
+    "nomic-embed-text-v2-moe",
+)
 
 
 def _serialize_settings(settings_row) -> WorkspaceSettingsResponse:
@@ -122,6 +141,53 @@ def _verify_api_key(provider: str, api_key: str, base_url: str | None, model: st
         )
 
 
+def _normalize_ollama_base_url(base_url: str | None) -> str:
+    settings = get_settings()
+    resolved = (base_url or settings.ollama_base_url or "http://localhost:11434").strip()
+    return resolved.rstrip("/")
+
+
+def _is_embedding_model(model_name: str, family: str) -> bool:
+    lowered_name = model_name.lower()
+    return any(lowered_name.startswith(prefix) for prefix in SUPPORTED_LOCAL_EMBEDDING_PREFIXES)
+
+
+def _fetch_local_models(local_base_url: str) -> list[LocalModelInfo]:
+    try:
+        response = httpx.get(f"{local_base_url}/api/tags", timeout=10.0)
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not connect to Ollama at {local_base_url}. Make sure Ollama is running.",
+        ) from exc
+
+    payload = response.json()
+    models = payload.get("models", [])
+    normalized_models: list[LocalModelInfo] = []
+    for item in models:
+        details = item.get("details") or {}
+        family = str(details.get("family") or "")
+        model_name = str(item.get("name") or item.get("model") or "").strip()
+        if not model_name:
+            continue
+        is_embedding = _is_embedding_model(model_name, family)
+        normalized_models.append(
+            LocalModelInfo(
+                name=model_name,
+                size_bytes=int(item.get("size") or 0),
+                modified_at=item.get("modified_at"),
+                family=family,
+                parameter_size=str(details.get("parameter_size") or ""),
+                is_embedding=is_embedding,
+                is_chat=not is_embedding,
+            )
+        )
+
+    normalized_models.sort(key=lambda model: model.name.lower())
+    return normalized_models
+
+
 @router.get("", response_model=WorkspaceSettingsResponse)
 def get_workspace_settings(
     db: Session = Depends(get_db),
@@ -129,6 +195,49 @@ def get_workspace_settings(
 ) -> WorkspaceSettingsResponse:
     settings_row = get_or_create_workspace_settings(db, current_user.id)
     return _serialize_settings(settings_row)
+
+
+@router.get("/local-models", response_model=LocalModelsResponse)
+def get_local_models(
+    local_base_url: str | None = None,
+    current_user: User = Depends(get_current_active_user),
+) -> LocalModelsResponse:
+    del current_user
+    resolved_base_url = _normalize_ollama_base_url(local_base_url)
+    installed_models = _fetch_local_models(resolved_base_url)
+    return LocalModelsResponse(
+        installed_models=installed_models,
+        recommended_embedding_models=RECOMMENDED_EMBEDDING_MODELS,
+        ollama_library_url=OLLAMA_LIBRARY_URL,
+        ollama_download_url=OLLAMA_DOWNLOAD_URL,
+    )
+
+
+@router.post("/local-models/pull", response_model=PullLocalModelResponse)
+def pull_local_model(
+    payload: PullLocalModelRequest,
+    current_user: User = Depends(get_current_active_user),
+) -> PullLocalModelResponse:
+    del current_user
+    model_name = payload.model_name.strip()
+    if not model_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="model_name is required.")
+
+    local_base_url = _normalize_ollama_base_url(payload.local_base_url)
+    try:
+        response = httpx.post(
+            f"{local_base_url}/api/pull",
+            json={"model": model_name, "stream": False},
+            timeout=3600.0,
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not download '{model_name}' from Ollama. Make sure Ollama is running and reachable at {local_base_url}.",
+        ) from exc
+
+    return PullLocalModelResponse(status="success", model_name=model_name)
 
 
 @router.put("", response_model=WorkspaceSettingsResponse)
@@ -163,7 +272,25 @@ def update_workspace_settings(
     settings_row.cloud_api_key = new_api_key or None
     settings_row.cloud_base_url = cloud_base_url
     settings_row.cloud_chat_model = payload.cloud_chat_model.strip()
-    settings_row.cloud_embedding_model = payload.cloud_embedding_model.strip()
+    
+    # Auto-resolve embedding model per provider
+    EMBEDDING_DEFAULTS = {
+        "gemini": "gemini/gemini-embedding-001",
+        "openai": "text-embedding-3-small",
+        "anthropic": "gemini/gemini-embedding-001",
+        "xai": "gemini/gemini-embedding-001",
+        "cloud": "text-embedding-3-small",
+        "local": get_settings().ollama_embedding_model,
+    }
+    submitted_embedding = payload.cloud_embedding_model.strip()
+    if not submitted_embedding or (provider == "gemini" and not submitted_embedding.startswith("gemini/")):
+        submitted_embedding = EMBEDDING_DEFAULTS.get(provider, "text-embedding-3-small")
+        
+    if submitted_embedding in ("gemini/text-embedding-004", "gemini/embedding-001"):
+        submitted_embedding = "gemini/gemini-embedding-001"
+        
+    settings_row.cloud_embedding_model = submitted_embedding
+    
     settings_row.local_base_url = payload.local_base_url.strip()
     settings_row.clustering_method = payload.clustering_method
     settings_row.min_cluster_size = payload.min_cluster_size

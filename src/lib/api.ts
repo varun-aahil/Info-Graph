@@ -1,7 +1,11 @@
 import type { ChatMessage, ClusterInfo, Document, ScatterPoint } from './types';
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-export const APP_MODE = import.meta.env.VITE_APP_MODE ?? 'local'; // 'local' or 'web'
+const runtimeOrigin =
+  typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000';
+
+export const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : `${runtimeOrigin}/api/v1`);
 const TOKEN_STORAGE_KEY = 'infograph_access_token';
 
 export interface AuthUserDto {
@@ -40,7 +44,7 @@ export interface ChatMessageResponse {
 }
 
 export interface WorkspaceSettings {
-  model_provider: 'cloud' | 'local';
+  model_provider: 'cloud' | 'local' | 'openai' | 'anthropic' | 'gemini' | 'xai';
   cloud_api_key: string;
   cloud_base_url: string;
   cloud_chat_model: string;
@@ -50,6 +54,28 @@ export interface WorkspaceSettings {
   min_cluster_size: number;
   cloud_api_key_configured: boolean;
   updated_at?: string;
+}
+
+export interface LocalModelInfo {
+  name: string;
+  size_bytes: number;
+  modified_at?: string | null;
+  family: string;
+  parameter_size: string;
+  is_embedding: boolean;
+  is_chat: boolean;
+}
+
+export interface LocalModelRecommendation {
+  name: string;
+  description: string;
+}
+
+export interface LocalModelsResponse {
+  installed_models: LocalModelInfo[];
+  recommended_embedding_models: LocalModelRecommendation[];
+  ollama_library_url: string;
+  ollama_download_url: string;
 }
 
 interface BackendDocument {
@@ -120,8 +146,8 @@ export async function registerUser(payload: {
   name: string;
   email: string;
   password: string;
-}): Promise<AuthResponseDto> {
-  return request<AuthResponseDto>('/auth/register', {
+}): Promise<{ message: string; email: string }> {
+  return request<{ message: string; email: string }>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -368,5 +394,23 @@ export async function updateWorkspaceSettings(settings: WorkspaceSettings): Prom
   return request<WorkspaceSettings>('/settings', {
     method: 'PUT',
     body: JSON.stringify(settings),
+  });
+}
+
+export async function fetchLocalModels(localBaseUrl: string): Promise<LocalModelsResponse> {
+  const query = new URLSearchParams({ local_base_url: localBaseUrl });
+  return request<LocalModelsResponse>(`/settings/local-models?${query.toString()}`);
+}
+
+export async function pullLocalModel(
+  modelName: string,
+  localBaseUrl: string
+): Promise<{ status: string; model_name: string }> {
+  return request<{ status: string; model_name: string }>('/settings/local-models/pull', {
+    method: 'POST',
+    body: JSON.stringify({
+      model_name: modelName,
+      local_base_url: localBaseUrl,
+    }),
   });
 }

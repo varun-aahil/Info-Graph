@@ -60,7 +60,7 @@ const defaultSettings: WorkspaceSettings = {
   cloud_api_key: '',
   cloud_base_url: 'https://api.openai.com/v1',
   cloud_chat_model: 'gpt-4.1-mini',
-  cloud_embedding_model: 'text-embedding-3-small',
+  cloud_embedding_model: 'nomic-embed-text',
   local_base_url: 'http://localhost:11434',
   clustering_method: 'kmeans',
   min_cluster_size: 5,

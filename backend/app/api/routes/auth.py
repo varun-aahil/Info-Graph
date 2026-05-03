@@ -32,23 +32,31 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     email = _normalize_email(str(payload.email))
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered.")
-
-    user = User(
-        email=email,
-        name=payload.name.strip(),
-        hashed_password=get_password_hash(payload.password),
-        provider="email",
-        is_active=True,
-        is_verified=True,
-    )
-    db.add(user)
-    db.flush()
-    get_or_create_workspace_settings(db, user.id)
-    db.commit()
-    db.refresh(user)
+        if existing_user.is_verified:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered.")
+        else:
+            # User exists but is unverified. We can just resend OTP.
+            existing_user.name = payload.name.strip()
+            existing_user.hashed_password = get_password_hash(payload.password)
+            user = existing_user
+    else:
+        user = User(
+            email=email,
+            name=payload.name.strip(),
+            hashed_password=get_password_hash(payload.password),
+            provider="email",
+            is_active=True,
+            is_verified=False,
+        )
+        db.add(user)
+        db.flush()
+        get_or_create_workspace_settings(db, user.id)
     
-    return _auth_response(user)
+    # Send OTP (Silently fails if Resend domain is unverified, allowing frontend to proceed)
+    send_otp_email(db, user.id, user.email, purpose="verify_email")
+    db.commit()
+    
+    return {"message": "User registered. Please verify your email with the OTP sent.", "email": email}
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -76,9 +84,6 @@ def verify_otp(payload: VerifyOTP, db: Session = Depends(get_db)) -> AuthRespons
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
         
-    if user.is_verified:
-        return _auth_response(user)
-        
     otp_record = db.scalar(
         select(EmailOTP).where(
             EmailOTP.user_id == user.id,
@@ -88,11 +93,6 @@ def verify_otp(payload: VerifyOTP, db: Session = Depends(get_db)) -> AuthRespons
     )
     
     if not otp_record:
-        # Fallback to bypass OTP if SMTP is broken (just in case they aren't verified yet)
-        if payload.otp_code == "000000":
-            user.is_verified = True
-            db.commit()
-            return _auth_response(user)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP code.")
     
     if otp_record.expires_at < datetime.utcnow():

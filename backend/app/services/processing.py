@@ -77,7 +77,7 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
             chunk_embeddings = []
             
             # Batch process embeddings to update progress smoothly (from 60 to 85)
-            batch_size = 10 if workspace_settings.model_provider != "local" else 5
+            batch_size = 90 if workspace_settings.model_provider != "local" else 5
             total_chunks = len(chunk_texts)
             for i in range(0, total_chunks, batch_size):
                 batch_texts = chunk_texts[i:i + batch_size]
@@ -88,7 +88,18 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
                 else:
                     embed_input = batch_texts
                 
-                batch_embeddings = provider_service.embed_texts(embed_input, workspace_settings)
+                import litellm
+                import time as _time
+                batch_embeddings = None
+                for attempt in range(5):
+                    try:
+                        batch_embeddings = provider_service.embed_texts(embed_input, workspace_settings)
+                        break
+                    except litellm.RateLimitError as e:
+                        if attempt == 4:
+                            raise e
+                        _time.sleep(20) # Back off and let the Gemini free tier RPM bucket refill
+                
                 chunk_embeddings.extend(batch_embeddings)
                 
                 # Calculate progress: 60 to 85
@@ -108,12 +119,13 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
                     )
                 )
 
-            if workspace_settings.model_provider == "local":
-                doc_embed_input = ["search_document: " + raw_text]
+            if chunk_embeddings:
+                # Use the first chunk (usually title/intro) as the document-level embedding 
+                # instead of averaging or hitting token limits.
+                document.document_embedding = chunk_embeddings[0]
             else:
-                doc_embed_input = [raw_text]
+                document.document_embedding = None
                 
-            document.document_embedding = provider_service.embed_texts(doc_embed_input, workspace_settings)[0]
             _update_stage(document, job, status="processing", stage="embedded", progress=85)
             db.commit()
 
@@ -139,6 +151,9 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
                         _time.sleep(1)
         except Exception as exc:
             db.rollback()
+            import traceback
+            print(f"CRITICAL ERROR in process_document for {document_id}:", flush=True)
+            traceback.print_exc()
             document = db.get(Document, document_id)
             if document is None:
                 return

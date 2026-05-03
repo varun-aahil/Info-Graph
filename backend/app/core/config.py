@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "InfoGraph API"
-    app_mode: str = "local" # "local" or "web"
     api_prefix: str = "/api/v1"
     database_url: str
     storage_dir: Path = Path("backend/data/uploads")
@@ -43,6 +42,7 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_pass: str | None = None
     smtp_from: str = "noreply@infograph.local"
+    resend_api_key: str | None = None
 
     @property
     def cors_origins_list(self) -> list[str]:

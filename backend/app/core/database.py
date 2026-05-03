@@ -17,7 +17,14 @@ _db_url = settings.database_url
 if _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-engine = create_engine(_db_url, pool_pre_ping=True)
+# Disable psycopg3 prepared statements — they conflict with Supabase's
+# PgBouncer transaction pooler, causing DuplicatePreparedStatement errors
+# when multiple workers hit the same pooled connection.
+engine = create_engine(
+    _db_url,
+    pool_pre_ping=True,
+    connect_args={"prepare_threshold": None},
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 

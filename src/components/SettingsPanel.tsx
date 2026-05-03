@@ -1,9 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { APP_MODE, type WorkspaceSettings } from '@/lib/api';
+import {
+  API_BASE,
+  fetchLocalModels,
+  pullLocalModel,
+  type LocalModelInfo,
+  type LocalModelRecommendation,
+  type WorkspaceSettings,
+} from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 
 interface SettingsPanelProps {
@@ -14,85 +22,89 @@ interface SettingsPanelProps {
   isSaving: boolean;
 }
 
-// -------------------------------------------------------------------
-// Provider configs — model strings MUST match what LiteLLM expects.
-// LiteLLM handles routing natively via the model prefix so no base_url
-// is needed for standard cloud providers.
-// -------------------------------------------------------------------
-const PROVIDER_CONFIGS: Record<
-  string,
-  { label: string; chatModels: string[]; needsKey: boolean }
-> = {
+type ProviderConfig = {
+  label: string;
+  chatModels: string[];
+  embeddingModels: string[];
+  defaultChatModel: string;
+  defaultEmbeddingModel: string;
+  needsKey: boolean;
+};
+
+const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   gemini: {
     label: 'Google Gemini',
     chatModels: [
-      // --- Gemini 3.x (Preview — current generation) ---
-      'gemini-3.1-pro-preview',        // flagship reasoning
-      'gemini-3-flash-preview',        // frontier-class fast
-      'gemini-3.1-flash-lite-preview', // cheapest/fastest
-      // --- Gemini 2.5 (Stable GA — still active) ---
-      'gemini-2.5-pro',                // advanced reasoning (stable)
-      'gemini-2.5-flash',              // best price-performance (stable)
-      'gemini-2.5-flash-lite',         // budget-friendly (stable)
+      'gemini-3.1-pro-preview',
+      'gemini-3-flash-preview',
+      'gemini-3.1-flash-lite-preview',
+      'gemini-2.5-pro',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
     ],
+    embeddingModels: ['gemini/gemini-embedding-001'],
+    defaultChatModel: 'gemini-2.5-flash',
+    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
     needsKey: true,
   },
   openai: {
     label: 'OpenAI',
-    chatModels: [
-      // --- GPT-4.1 series (1M context, current) ---
-      'gpt-4.1',
-      'gpt-4.1-mini',
-      'gpt-4.1-nano',
-      // --- GPT-4o series (established multimodal) ---
-      'gpt-4o',
-      'gpt-4o-mini',
-      // --- Reasoning models ---
-      'o4-mini',
-      'o3-mini',
-    ],
+    chatModels: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3-mini'],
+    embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
+    defaultChatModel: 'gpt-4.1-mini',
+    defaultEmbeddingModel: 'text-embedding-3-small',
     needsKey: true,
   },
   anthropic: {
     label: 'Anthropic',
     chatModels: [
-      // --- Active models (from official deprecations page) ---
-      'claude-opus-4-7',               // latest flagship (Apr 2026)
-      'claude-opus-4-6',               // Opus 4.6
-      'claude-sonnet-4-6',             // Sonnet 4.6
-      'claude-sonnet-4-5-20250929',    // Sonnet 4.5
-      'claude-opus-4-5-20251101',      // Opus 4.5
-      'claude-opus-4-1-20250805',      // Opus 4.1
-      'claude-haiku-4-5-20251001',     // Haiku 4.5 (fast/cheap)
+      'claude-opus-4-7',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+      'claude-sonnet-4-5-20250929',
+      'claude-opus-4-5-20251101',
+      'claude-opus-4-1-20250805',
+      'claude-haiku-4-5-20251001',
     ],
+    embeddingModels: ['gemini/gemini-embedding-001'],
+    defaultChatModel: 'claude-sonnet-4-6',
+    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
     needsKey: true,
   },
   xai: {
     label: 'xAI (Grok)',
     chatModels: [
-      // --- Grok 4.x series (current generation) ---
-      'grok-4.3',                      // latest flagship (Apr 2026)
-      'grok-4.20-reasoning',           // deep reasoning variant
-      'grok-4.20-non-reasoning',       // fast non-reasoning variant
-      'grok-4-1-fast-reasoning',       // low-latency reasoning
-      'grok-4-1-fast-non-reasoning',   // low-latency fast
-      'grok-4',                        // Grok 4 base
-      // --- Grok 3 (established) ---
+      'grok-4.3',
+      'grok-4.20-reasoning',
+      'grok-4.20-non-reasoning',
+      'grok-4-1-fast-reasoning',
+      'grok-4-1-fast-non-reasoning',
+      'grok-4',
       'grok-3',
       'grok-3-mini',
     ],
+    embeddingModels: ['gemini/gemini-embedding-001'],
+    defaultChatModel: 'grok-4.3',
+    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
+    needsKey: true,
+  },
+  cloud: {
+    label: 'Cloud (Legacy)',
+    chatModels: ['gpt-4.1-mini', 'gpt-4o-mini'],
+    embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
+    defaultChatModel: 'gpt-4.1-mini',
+    defaultEmbeddingModel: 'text-embedding-3-small',
     needsKey: true,
   },
   local: {
     label: 'Custom / Local',
-    chatModels: ['llama3', 'mistral', 'gemma', 'phi3'],
+    chatModels: [],
+    embeddingModels: [],
+    defaultChatModel: 'llama3.1:8b',
+    defaultEmbeddingModel: 'nomic-embed-text',
     needsKey: false,
   },
 };
-
-if (APP_MODE === 'web') {
-  delete PROVIDER_CONFIGS.local;
-}
 
 type ProviderKey = keyof typeof PROVIDER_CONFIGS;
 
@@ -103,50 +115,113 @@ export default function SettingsPanel({
   onSave,
   isSaving,
 }: SettingsPanelProps) {
-  // ── Per-provider dictionaries ─────────────────────────────────────
-  // API keys and verified flags are stored PER PROVIDER so switching
-  // the dropdown never erases a previously entered/verified key.
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
     gemini: '',
     openai: '',
     anthropic: '',
     xai: '',
+    cloud: '',
     local: '',
   });
   const [verifiedProviders, setVerifiedProviders] = useState<Record<string, boolean>>({});
   const [isVerifying, setIsVerifying] = useState(false);
+  const [localModels, setLocalModels] = useState<LocalModelInfo[]>([]);
+  const [recommendedEmbeddingModels, setRecommendedEmbeddingModels] = useState<LocalModelRecommendation[]>([]);
+  const [ollamaLibraryUrl, setOllamaLibraryUrl] = useState('https://ollama.com/library');
+  const [ollamaDownloadUrl, setOllamaDownloadUrl] = useState('https://ollama.com/download');
+  const [isLoadingLocalModels, setIsLoadingLocalModels] = useState(false);
+  const [pullingModelName, setPullingModelName] = useState<string | null>(null);
 
   const provider = (workspaceSettings.model_provider || 'gemini') as ProviderKey;
   const config = PROVIDER_CONFIGS[provider] ?? PROVIDER_CONFIGS.gemini;
-
-  // Current provider's key & verified state derived from the dictionaries
   const currentKey = apiKeys[provider] || '';
   const isKeySaved = verifiedProviders[provider] ?? false;
 
-  // ── Hydrate on mount ───────────────────────────────────────────────
-  // If the backend already has a configured key for the active provider,
-  // mark it verified so model dropdowns are unlocked immediately.
+  const localChatModels = useMemo(
+    () => localModels.filter((model) => model.is_chat).map((model) => model.name),
+    [localModels]
+  );
+  const localEmbeddingModels = useMemo(
+    () => localModels.filter((model) => model.is_embedding).map((model) => model.name),
+    [localModels]
+  );
+
   useEffect(() => {
     if (workspaceSettings.cloud_api_key_configured) {
       setVerifiedProviders((prev) => ({ ...prev, [provider]: true }));
     }
-    // Seed the current key from workspaceSettings if present
     if (workspaceSettings.cloud_api_key) {
       setApiKeys((prev) => ({ ...prev, [provider]: workspaceSettings.cloud_api_key }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ------------------------------------------------------------------
-  // Smart auto-detect: inspect the pasted key prefix to set the provider
-  // ------------------------------------------------------------------
+  const loadLocalModels = async (baseUrl: string) => {
+    setIsLoadingLocalModels(true);
+    try {
+      const response = await fetchLocalModels(baseUrl);
+      setLocalModels(response.installed_models);
+      setRecommendedEmbeddingModels(response.recommended_embedding_models);
+      setOllamaLibraryUrl(response.ollama_library_url);
+      setOllamaDownloadUrl(response.ollama_download_url);
+    } catch (error) {
+      setLocalModels([]);
+      toast({
+        title: 'Could not load local models',
+        description: error instanceof Error ? error.message : 'Make sure Ollama is running.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingLocalModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (provider !== 'local') return;
+    loadLocalModels(workspaceSettings.local_base_url).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, workspaceSettings.local_base_url]);
+
+  useEffect(() => {
+    if (provider !== 'local') return;
+
+    const nextChatModel =
+      localChatModels.find((model) => model === workspaceSettings.cloud_chat_model) ||
+      localChatModels.find((model) => model.startsWith('llama3')) ||
+      localChatModels[0] ||
+      config.defaultChatModel;
+
+    const nextEmbeddingModel =
+      localEmbeddingModels.find((model) => model === workspaceSettings.cloud_embedding_model) ||
+      localEmbeddingModels.find((model) => model.startsWith('nomic-embed-text')) ||
+      localEmbeddingModels[0] ||
+      config.defaultEmbeddingModel;
+
+    if (
+      workspaceSettings.cloud_chat_model !== nextChatModel ||
+      workspaceSettings.cloud_embedding_model !== nextEmbeddingModel
+    ) {
+      setWorkspaceSettings((current) => ({
+        ...current,
+        cloud_chat_model: nextChatModel,
+        cloud_embedding_model: nextEmbeddingModel,
+      }));
+    }
+  }, [
+    config.defaultChatModel,
+    config.defaultEmbeddingModel,
+    localChatModels,
+    localEmbeddingModels,
+    provider,
+    setWorkspaceSettings,
+    workspaceSettings.cloud_chat_model,
+    workspaceSettings.cloud_embedding_model,
+  ]);
+
   const handleApiKeyChange = (value: string) => {
-    // Always store the key for the CURRENT provider first
     setApiKeys((prev) => ({ ...prev, [provider]: value }));
-    // Invalidate verification — user changed the key
     setVerifiedProviders((prev) => ({ ...prev, [provider]: false }));
 
-    // Auto-detect provider from key prefix
     let detectedProvider: string | null = null;
     if (value.startsWith('sk-ant-')) {
       detectedProvider = 'anthropic';
@@ -158,56 +233,45 @@ export default function SettingsPanel({
 
     if (detectedProvider && detectedProvider !== provider) {
       const next = PROVIDER_CONFIGS[detectedProvider as ProviderKey];
-      // Store the key under the DETECTED provider, not the old one
       setApiKeys((prev) => ({
         ...prev,
-        [provider]: '',                   // clear from old provider
-        [detectedProvider!]: value,       // set on detected provider
+        [provider]: '',
+        [detectedProvider!]: value,
       }));
       setVerifiedProviders((prev) => ({ ...prev, [detectedProvider!]: false }));
-      setWorkspaceSettings((c) => ({
-        ...c,
+      setWorkspaceSettings((current) => ({
+        ...current,
         model_provider: detectedProvider!,
         cloud_api_key: value,
         cloud_base_url: '',
-        cloud_chat_model: next.chatModels[0],
+        cloud_chat_model: next.defaultChatModel,
+        cloud_embedding_model: next.defaultEmbeddingModel,
       }));
-    } else {
-      // Same provider — just sync the key to workspace
-      setWorkspaceSettings((c) => ({ ...c, cloud_api_key: value }));
+      return;
     }
+
+    setWorkspaceSettings((current) => ({ ...current, cloud_api_key: value }));
   };
 
-  // ------------------------------------------------------------------
-  // Provider change: switch to the new provider, RESTORE its saved key,
-  // and reflect its verified state. Nothing is erased.
-  // ------------------------------------------------------------------
   const handleProviderChange = (nextProvider: string) => {
     const next = PROVIDER_CONFIGS[nextProvider as ProviderKey] ?? PROVIDER_CONFIGS.gemini;
     setIsVerifying(false);
 
-    // Restore the key we have in memory for this provider (may be empty)
-    const restoredKey = apiKeys[nextProvider] || '';
-
-    setWorkspaceSettings((c) => ({
-      ...c,
+    setWorkspaceSettings((current) => ({
+      ...current,
       model_provider: nextProvider,
-      cloud_api_key: restoredKey,
+      cloud_api_key: apiKeys[nextProvider] || '',
       cloud_base_url: '',
-      local_base_url: nextProvider === 'local' ? 'http://localhost:11434' : c.local_base_url,
-      cloud_chat_model: next.chatModels[0],
+      local_base_url: nextProvider === 'local' ? 'http://localhost:11434' : current.local_base_url,
+      cloud_chat_model: next.defaultChatModel,
+      cloud_embedding_model: next.defaultEmbeddingModel,
     }));
   };
 
-  // ------------------------------------------------------------------
-  // Verify & Save: direct fetch to PUT /settings. The payload is built
-  // strictly from the ACTIVE provider + its key + its selected model.
-  // ------------------------------------------------------------------
   const handleVerifyAndSave = async () => {
     setIsVerifying(true);
     setVerifiedProviders((prev) => ({ ...prev, [provider]: false }));
 
-    // Build a strict payload — never mix providers/models
     const strictPayload: WorkspaceSettings = {
       ...workspaceSettings,
       model_provider: provider,
@@ -217,9 +281,7 @@ export default function SettingsPanel({
 
     try {
       const token = localStorage.getItem('infograph_access_token');
-      const apiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
-
-      const response = await fetch(`${apiBase}/settings`, {
+      const response = await fetch(`${API_BASE}/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -243,23 +305,17 @@ export default function SettingsPanel({
       });
     } catch (err) {
       const raw = err instanceof Error ? err.message : '';
-
-      // 402 = key is valid but account has billing/credit issues
-      // Show a warning (not destructive) — the key itself is fine
       if (/402|lacks credits|add credits|payment required/i.test(raw)) {
         setVerifiedProviders((prev) => ({ ...prev, [provider]: false }));
         toast({
           title: 'Account Issue',
-          description: raw || 'Your API key is valid, but your account needs credits. Please check your provider console.',
+          description: raw || 'Your API key is valid, but your account needs credits.',
         });
       } else {
         setVerifiedProviders((prev) => ({ ...prev, [provider]: false }));
-
-        // Use the backend's message directly — it's already scrubbed and human-readable
-        const errorMessage = raw || 'Verification failed. Please try again.';
         toast({
           title: 'Verification Failed',
-          description: errorMessage,
+          description: raw || 'Verification failed. Please try again.',
           variant: 'destructive',
         });
       }
@@ -268,9 +324,32 @@ export default function SettingsPanel({
     }
   };
 
-  // Model dropdowns are ALWAYS unlocked — the user must be able to
-  // select a model BEFORE verifying their key to avoid the chicken-
-  // and-egg deadlock where verification uses the selected model.
+  const handlePullEmbeddingModel = async (modelName: string) => {
+    setPullingModelName(modelName);
+    try {
+      await pullLocalModel(modelName, workspaceSettings.local_base_url);
+      toast({
+        title: 'Model downloaded',
+        description: `${modelName} is now available locally.`,
+      });
+      await loadLocalModels(workspaceSettings.local_base_url);
+      setWorkspaceSettings((current) => ({
+        ...current,
+        cloud_embedding_model: modelName,
+      }));
+    } catch (error) {
+      toast({
+        title: 'Model download failed',
+        description: error instanceof Error ? error.message : `Could not download ${modelName}.`,
+        variant: 'destructive',
+      });
+    } finally {
+      setPullingModelName(null);
+    }
+  };
+
+  const chatModelOptions = provider === 'local' ? localChatModels : config.chatModels;
+  const embeddingModelOptions = provider === 'local' ? localEmbeddingModels : config.embeddingModels;
 
   return (
     <main className="flex-1 overflow-auto p-6">
@@ -279,7 +358,6 @@ export default function SettingsPanel({
         <p className="mb-8 text-sm text-muted-foreground">Configure your InfoGraph workspace</p>
 
         <div className="space-y-6">
-          {/* ── Profile ─────────────────────────────────────────── */}
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Profile</h3>
             <p className="mb-4 text-xs text-muted-foreground">Your account information</p>
@@ -295,13 +373,11 @@ export default function SettingsPanel({
             </div>
           </div>
 
-          {/* ── Model Configuration ─────────────────────────────── */}
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Model Configuration</h3>
             <p className="mb-4 text-xs text-muted-foreground">Choose how to connect your LLM</p>
 
             <div className="space-y-5">
-              {/* Step 1 — Provider */}
               <div>
                 <label className="mb-2.5 block text-xs font-medium text-foreground">
                   <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">1</span>
@@ -312,15 +388,14 @@ export default function SettingsPanel({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(PROVIDER_CONFIGS).map(([key, cfg]) => (
-                      <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                    {Object.entries(PROVIDER_CONFIGS).map(([key, providerConfig]) => (
+                      <SelectItem key={key} value={key}>{providerConfig.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Step 2 — API Key (cloud providers only) */}
-              {config.needsKey && (
+              {config.needsKey ? (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-foreground">
                     <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">2</span>
@@ -329,11 +404,7 @@ export default function SettingsPanel({
                   <div className="flex gap-2">
                     <Input
                       type="password"
-                      placeholder={
-                        isKeySaved
-                          ? 'Stored securely in database'
-                          : 'Paste your API key here'
-                      }
+                      placeholder={isKeySaved ? 'Stored securely in database' : 'Paste your API key here'}
                       value={currentKey}
                       onChange={(e) => handleApiKeyChange(e.target.value)}
                       className="h-9 flex-1 text-sm"
@@ -346,9 +417,13 @@ export default function SettingsPanel({
                       onClick={handleVerifyAndSave}
                     >
                       {isVerifying ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying…</>
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verifying...
+                        </>
                       ) : isKeySaved ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> Verified</>
+                        <>
+                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> Verified
+                        </>
                       ) : (
                         'Verify & Save'
                       )}
@@ -356,33 +431,59 @@ export default function SettingsPanel({
                   </div>
                   {!isKeySaved && (
                     <p className="mt-1.5 flex items-center gap-1 text-[10px] text-amber-500">
-                      <AlertCircle className="h-3 w-3" /> Verify your key to unlock model selection
+                      <AlertCircle className="h-3 w-3" /> Verify your key to save cloud settings.
                     </p>
                   )}
                 </div>
-              )}
-
-              {/* Step 2b — Base URL (local/custom provider ONLY) */}
-              {!config.needsKey && (
+              ) : (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-foreground">
                     <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">2</span>
-                    Base URL
+                    Ollama Base URL
                   </label>
                   <Input
                     value={workspaceSettings.local_base_url}
                     onChange={(e) =>
-                      setWorkspaceSettings((c) => ({ ...c, local_base_url: e.target.value }))
+                      setWorkspaceSettings((current) => ({ ...current, local_base_url: e.target.value }))
                     }
                     className="h-9 text-sm"
                   />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={() => loadLocalModels(workspaceSettings.local_base_url)}
+                      disabled={isLoadingLocalModels}
+                    >
+                      {isLoadingLocalModels ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refresh Models'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => window.open(ollamaDownloadUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      Install Ollama
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => window.open(ollamaLibraryUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      Browse Models
+                    </Button>
+                  </div>
                   <p className="mt-1.5 text-[10px] text-muted-foreground">
-                    Ensure Ollama or LocalAI is reachable from the Docker container.
+                    Only models already installed in your local Ollama instance appear below.
                   </p>
                 </div>
               )}
 
-              {/* Step 3 — Model Dropdowns (always enabled) */}
               <div>
                 <label className="mb-2.5 block text-xs font-medium text-foreground">
                   <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">3</span>
@@ -390,39 +491,103 @@ export default function SettingsPanel({
                 </label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="mb-1.5 block text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Chat Model</label>
+                    <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Chat Model</label>
                     <Select
                       value={workspaceSettings.cloud_chat_model}
-                      onValueChange={(val) => setWorkspaceSettings((c) => ({ ...c, cloud_chat_model: val }))}
+                      onValueChange={(value) =>
+                        setWorkspaceSettings((current) => ({ ...current, cloud_chat_model: value }))
+                      }
+                      disabled={provider === 'local' && chatModelOptions.length === 0}
                     >
                       <SelectTrigger className="h-9 text-sm">
-                        <SelectValue />
+                        <SelectValue
+                          placeholder={
+                            provider === 'local'
+                              ? isLoadingLocalModels
+                                ? 'Loading local models...'
+                                : 'No local chat models found'
+                              : undefined
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        {config.chatModels.map((m) => (
-                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        {chatModelOptions.map((model) => (
+                          <SelectItem key={model} value={model}>{model}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  {APP_MODE !== 'web' && (
-                    <div>
-                      <label className="mb-1.5 block text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Embedding Model</label>
-                      <Input
-                        value={workspaceSettings.cloud_embedding_model}
-                        onChange={(e) =>
-                          setWorkspaceSettings((c) => ({ ...c, cloud_embedding_model: e.target.value }))
-                        }
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  )}
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Embedding Model</label>
+                    <Select
+                      value={workspaceSettings.cloud_embedding_model}
+                      onValueChange={(value) =>
+                        setWorkspaceSettings((current) => ({ ...current, cloud_embedding_model: value }))
+                      }
+                      disabled={provider === 'local' && embeddingModelOptions.length === 0}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue
+                          placeholder={
+                            provider === 'local'
+                              ? isLoadingLocalModels
+                                ? 'Loading embedding models...'
+                                : 'No local embedding models found'
+                              : undefined
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {embeddingModelOptions.map((model) => (
+                          <SelectItem key={model} value={model}>{model}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
+                {provider === 'local' && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Recommended Embedding Models
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Local embeddings are limited to 768-dimension models right now because the vector database schema is fixed to 768.
+                    </p>
+                    {recommendedEmbeddingModels.map((model) => {
+                      const isInstalled = localEmbeddingModels.includes(model.name);
+                      return (
+                        <div key={model.name} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-foreground">{model.name}</div>
+                            <div className="text-[10px] text-muted-foreground">{model.description}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isInstalled ? 'outline' : 'default'}
+                            className="h-7 text-[10px]"
+                            disabled={isInstalled || pullingModelName === model.name}
+                            onClick={() => handlePullEmbeddingModel(model.name)}
+                          >
+                            {pullingModelName === model.name ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : isInstalled ? (
+                              'Installed'
+                            ) : (
+                              'Download'
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* ── Clustering Preferences ──────────────────────────── */}
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Preferences</h3>
             <p className="mb-4 text-xs text-muted-foreground">Fine-tune how documents are grouped</p>
@@ -432,7 +597,7 @@ export default function SettingsPanel({
                 <Select
                   value={workspaceSettings.clustering_method}
                   onValueChange={(value) =>
-                    setWorkspaceSettings((c) => ({ ...c, clustering_method: value }))
+                    setWorkspaceSettings((current) => ({ ...current, clustering_method: value }))
                   }
                 >
                   <SelectTrigger className="h-9 text-sm">
@@ -452,8 +617,8 @@ export default function SettingsPanel({
                   min={1}
                   value={workspaceSettings.min_cluster_size}
                   onChange={(e) =>
-                    setWorkspaceSettings((c) => ({
-                      ...c,
+                    setWorkspaceSettings((current) => ({
+                      ...current,
                       min_cluster_size: Number(e.target.value) || 1,
                     }))
                   }
@@ -463,7 +628,6 @@ export default function SettingsPanel({
             </div>
           </div>
 
-          {/* Save button */}
           <div className="flex justify-end">
             <Button size="sm" onClick={onSave} disabled={isSaving}>
               {isSaving ? 'Saving...' : 'Save Changes'}

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import {
+  API_BASE,
   fetchCurrentUser,
   loginUser,
   registerUser,
@@ -7,8 +8,6 @@ import {
   verifyOtp as verifyOtpApi,
   type AuthUserDto,
 } from '@/lib/api';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1';
 
 export interface AuthUser {
   id: string;
@@ -92,8 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp: AuthContextValue['signUp'] = async ({ name, email, password }) => {
     const response = await registerUser({ name, email, password });
-    persist(mapBackendUser(response.user), response.access_token);
-    return response.user.email;
+    return response.email;
   };
 
   const signIn: AuthContextValue['signIn'] = async ({ email, password }) => {

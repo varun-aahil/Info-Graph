@@ -33,9 +33,30 @@ def send_otp_email(db: Session, user_id: str, email: str, purpose: str = "verify
     # Always log OTP in development/testing (you can see this in Render logs)
     logger.info(f"Generated OTP for {email}: {code}")
     
-    # Send Email
+    # Send Email via Resend API (bypasses Render SMTP port blocking)
+    if hasattr(settings, 'resend_api_key') and settings.resend_api_key:
+        import httpx
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+                json={
+                    "from": settings.smtp_from or "onboarding@resend.dev",
+                    "to": email,
+                    "subject": "Your InfoGraph Verification Code",
+                    "html": f"<p>Your verification code is: <strong>{code}</strong></p><p>This code will expire in 15 minutes.</p>"
+                }
+            )
+            response.raise_for_status()
+            logger.info(f"OTP sent to {email} via Resend")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send OTP via Resend API: {e}")
+            return False
+
+    # Fallback to SMTP
     if not settings.smtp_host or not settings.smtp_user or not settings.smtp_pass:
-        logger.warning(f"SMTP not configured. Skipping email dispatch.")
+        logger.warning(f"SMTP/Resend not configured. Skipping email dispatch.")
         return True
         
     try:
@@ -50,8 +71,8 @@ def send_otp_email(db: Session, user_id: str, email: str, purpose: str = "verify
             server.login(settings.smtp_user, settings.smtp_pass)
             server.send_message(msg)
             
-        logger.info(f"OTP sent to {email}")
+        logger.info(f"OTP sent to {email} via SMTP")
         return True
     except Exception as e:
-        logger.error(f"Failed to send OTP email: {e}")
+        logger.error(f"Failed to send OTP email via SMTP: {e}")
         return False
