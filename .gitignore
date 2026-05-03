@@ -41,5 +41,9 @@ __pycache__/
 .mypy_cache/
 *.egg-info/
 
+# PyInstaller
+build/
+*.spec
+
 # Backend runtime data (user uploads — never commit)
 backend/data/uploads/
