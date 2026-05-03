@@ -51,11 +51,7 @@ def retrieve_relevant_chunks(
         logger.warning("resolve_selection returned empty doc_ids for selection %s", selection)
         return [], selection_label
 
-    if workspace_settings.model_provider == "local":
-        query_input = ["search_query: " + query]
-    else:
-        query_input = [query]
-        
+    query_input = ["search_query: " + query]
     query_embedding = provider_service.embed_texts(query_input, workspace_settings)[0]
 
     ranked_chunks = db.scalars(

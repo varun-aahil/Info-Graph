@@ -38,31 +38,6 @@ class ModelProviderService:
             return f"xai/{model}"
         return model
 
-    # Default embedding models per provider — used when user hasn't
-    # explicitly configured one or the stored default is wrong.
-    _PROVIDER_EMBEDDING_DEFAULTS: dict[str, str] = {
-        "gemini":    "gemini/gemini-embedding-001",   # free, 768-dim
-        "openai":    "text-embedding-3-small",       # 1536-dim
-        "anthropic":  "gemini/gemini-embedding-001",   # Anthropic has no native embedding; use Gemini as fallback
-        "xai":       "gemini/gemini-embedding-001",    # xAI has no native embedding; use Gemini as fallback
-        "cloud":     "text-embedding-3-small",       # legacy fallback
-    }
-
-    def _resolve_cloud_embedding_model(self, workspace_settings: WorkspaceSettings) -> str:
-        provider = workspace_settings.model_provider or "cloud"
-        stored = (workspace_settings.cloud_embedding_model or "").strip()
-
-        default = self._PROVIDER_EMBEDDING_DEFAULTS.get(provider, "text-embedding-3-small")
-
-        if not stored or (provider == "gemini" and not stored.startswith("gemini/")):
-            return default
-            
-        # Force override deprecated Gemini models
-        if stored in ("gemini/text-embedding-004", "gemini/embedding-001"):
-            return "gemini/gemini-embedding-001"
-            
-        return stored
-
     def _resolve_local_chat_model(self, workspace_settings: WorkspaceSettings) -> str:
         model = (workspace_settings.cloud_chat_model or self.app_settings.ollama_chat_model).strip()
         return model or self.app_settings.ollama_chat_model
@@ -74,10 +49,7 @@ class ModelProviderService:
     def embed_texts(self, texts: list[str], workspace_settings: WorkspaceSettings) -> list[list[float]]:
         if not texts:
             return []
-
-        if workspace_settings.model_provider == "local":
-            return self._embed_with_ollama(texts, workspace_settings)
-        return self._embed_with_litellm(texts, workspace_settings)
+        return self._embed_with_ollama(texts, workspace_settings)
 
     def chat_completion(
         self,
@@ -96,38 +68,6 @@ class ModelProviderService:
         if workspace_settings.model_provider == "local":
             return self._stream_chat_with_ollama(messages, workspace_settings)
         return self._stream_chat_with_litellm(messages, workspace_settings)
-
-    def _embed_with_litellm(
-        self,
-        texts: list[str],
-        workspace_settings: WorkspaceSettings,
-    ) -> list[list[float]]:
-        import litellm
-
-        model = self._resolve_cloud_embedding_model(workspace_settings)
-        provider = workspace_settings.model_provider or "cloud"
-
-        # For Gemini embedding, we need to use the Gemini API key
-        # even if the user's "cloud" provider is something else.
-        if model.startswith("gemini/"):
-            # Use the workspace key — it should be a Gemini key if provider is gemini,
-            # otherwise fall back to the app-level key.
-            api_key = self._resolve_cloud_api_key(workspace_settings)
-            api_base = None  # Let LiteLLM handle Gemini routing natively
-            custom_provider = "gemini"
-        else:
-            api_key = self._resolve_cloud_api_key(workspace_settings)
-            api_base = self._resolve_cloud_base_url(workspace_settings)
-            custom_provider = None
-
-        response = litellm.embedding(
-            model=model,
-            api_key=api_key,
-            api_base=api_base,
-            custom_llm_provider=custom_provider,
-            input=texts,
-        )
-        return [item["embedding"] for item in response.data]
 
     def _chat_with_litellm(
         self,

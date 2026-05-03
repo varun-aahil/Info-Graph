@@ -148,27 +148,26 @@ def refresh_graph(db: Session, workspace_settings: WorkspaceSettings, user_id: s
         for cid, docs in existing_clusters_docs.items()
     }
 
-    ready_ids = {document.id for document in documents}
-    db.execute(
-        delete(DocumentGraphPoint).where(
-            DocumentGraphPoint.user_id == user_id,
-            DocumentGraphPoint.document_id.not_in(ready_ids),
-        )
-    )
+    # Rebuild the user's graph points from scratch each refresh. This avoids
+    # stale relationship state and duplicate-key inserts when large ingestions
+    # trigger repeated graph rebuilds in the same session.
+    db.execute(delete(DocumentGraphPoint).where(DocumentGraphPoint.user_id == user_id))
+    db.flush()
 
     if len(documents) == 1:
         doc = documents[0]
         snippet = (doc.chunks[0].content[:280] if doc.chunks else doc.original_name).strip()
-        point = doc.graph_point or DocumentGraphPoint(document_id=doc.id, user_id=user_id)
-        point.user_id = user_id
-        point.x = 0.0
-        point.y = 0.0
-        point.cluster_id = 0
-        point.cluster_label = "Cluster 1"
-        point.is_anomaly = False
-        point.representative_snippet = snippet
-        if doc.graph_point is None:
-            db.add(point)
+        point = DocumentGraphPoint(
+            document_id=doc.id,
+            user_id=user_id,
+            x=0.0,
+            y=0.0,
+            cluster_id=0,
+            cluster_label="Cluster 1",
+            is_anomaly=False,
+            representative_snippet=snippet,
+        )
+        db.add(point)
         db.flush()
         return
 
@@ -201,16 +200,17 @@ def refresh_graph(db: Session, workspace_settings: WorkspaceSettings, user_id: s
         else:
             cluster_label = f"Cluster {cluster_id + 1}"
 
-        point = document.graph_point or DocumentGraphPoint(document_id=document.id, user_id=user_id)
-        point.user_id = user_id
-        point.x = float(coordinates[index][0])
-        point.y = float(coordinates[index][1])
-        point.cluster_id = cluster_id
-        point.cluster_label = cluster_label
-        point.is_anomaly = is_anomaly
-        point.representative_snippet = snippet
-        if document.graph_point is None:
-            db.add(point)
+        point = DocumentGraphPoint(
+            document_id=document.id,
+            user_id=user_id,
+            x=float(coordinates[index][0]),
+            y=float(coordinates[index][1]),
+            cluster_id=cluster_id,
+            cluster_label=cluster_label,
+            is_anomaly=is_anomaly,
+            representative_snippet=snippet,
+        )
+        db.add(point)
 
     db.flush()
     auto_title_clusters(db, workspace_settings, user_id)

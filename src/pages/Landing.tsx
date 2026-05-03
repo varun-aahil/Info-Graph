@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import AuthModal, { type AuthMode } from '@/components/AuthModal';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
+import { EXE_DOWNLOAD_URL } from '@/lib/runtime';
 import crystalHero from '@/assets/crystal-hero.png';
 
 const features = [
@@ -42,8 +43,7 @@ export default function Landing() {
   };
 
   const handleGetStarted = () => {
-    if (user) navigate('/dashboard');
-    else openAuth('signup');
+    window.open(EXE_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
   };
 
   const initials = user
