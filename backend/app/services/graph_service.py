@@ -36,21 +36,19 @@ def _cluster_embeddings(vectors: np.ndarray, workspace_settings: WorkspaceSettin
     elif method == "dbscan":
         # DBSCAN: density-based — outliers get label -1 (noise)
         min_samples = max(2, workspace_settings.min_cluster_size)
-        # Use cosine distance; eps tuned for normalized embeddings
+        # Increased eps to 0.7 to be more inclusive for semantic clusters
         from sklearn.preprocessing import normalize
         normed = normalize(vectors, norm="l2")
-        model = DBSCAN(eps=0.5, min_samples=min_samples, metric="cosine")
+        model = DBSCAN(eps=0.7, min_samples=min_samples, metric="cosine")
         labels = model.fit_predict(normed)
-        # If DBSCAN assigns everything to noise (-1), fall back to kmeans
-        if np.all(labels < 0):
-            logger.warning("DBSCAN assigned all points to noise — falling back to kmeans")
-            n_clusters = max(2, min(count // 2, 5))
-            labels = KMeans(n_clusters=n_clusters, n_init=10, random_state=42).fit_predict(vectors)
+        # We removed the KMeans fallback to ensure users can see DBSCAN's specific behavior (Grey noise points)
 
     elif method == "hierarchical":
-        # Agglomerative clustering using a distance threshold to naturally find clusters
-        # A threshold of 0.4 means items must be somewhat similar to be clustered
-        model = AgglomerativeClustering(n_clusters=None, distance_threshold=0.4, metric="cosine", linkage="average")
+        # Agglomerative clustering: hierarchical approach
+        # Instead of a threshold, we'll use a cluster count similar to KMeans 
+        # but using Ward linkage to see a different grouping logic.
+        n_clusters = max(2, min(count // 2, 5))
+        model = AgglomerativeClustering(n_clusters=n_clusters, metric="euclidean", linkage="ward")
         labels = model.fit_predict(vectors)
 
     else:
@@ -148,27 +146,26 @@ def refresh_graph(db: Session, workspace_settings: WorkspaceSettings, user_id: s
         for cid, docs in existing_clusters_docs.items()
     }
 
-    ready_ids = {document.id for document in documents}
-    db.execute(
-        delete(DocumentGraphPoint).where(
-            DocumentGraphPoint.user_id == user_id,
-            DocumentGraphPoint.document_id.not_in(ready_ids),
-        )
-    )
+    # Rebuild the user's graph points from scratch each refresh. This avoids
+    # stale relationship state and duplicate-key inserts when large ingestions
+    # trigger repeated graph rebuilds in the same session.
+    db.execute(delete(DocumentGraphPoint).where(DocumentGraphPoint.user_id == user_id))
+    db.flush()
 
     if len(documents) == 1:
         doc = documents[0]
         snippet = (doc.chunks[0].content[:280] if doc.chunks else doc.original_name).strip()
-        point = doc.graph_point or DocumentGraphPoint(document_id=doc.id, user_id=user_id)
-        point.user_id = user_id
-        point.x = 0.0
-        point.y = 0.0
-        point.cluster_id = 0
-        point.cluster_label = "Cluster 1"
-        point.is_anomaly = False
-        point.representative_snippet = snippet
-        if doc.graph_point is None:
-            db.add(point)
+        point = DocumentGraphPoint(
+            document_id=doc.id,
+            user_id=user_id,
+            x=0.0,
+            y=0.0,
+            cluster_id=0,
+            cluster_label="Cluster 1",
+            is_anomaly=False,
+            representative_snippet=snippet,
+        )
+        db.add(point)
         db.flush()
         return
 
@@ -201,16 +198,17 @@ def refresh_graph(db: Session, workspace_settings: WorkspaceSettings, user_id: s
         else:
             cluster_label = f"Cluster {cluster_id + 1}"
 
-        point = document.graph_point or DocumentGraphPoint(document_id=document.id, user_id=user_id)
-        point.user_id = user_id
-        point.x = float(coordinates[index][0])
-        point.y = float(coordinates[index][1])
-        point.cluster_id = cluster_id
-        point.cluster_label = cluster_label
-        point.is_anomaly = is_anomaly
-        point.representative_snippet = snippet
-        if document.graph_point is None:
-            db.add(point)
+        point = DocumentGraphPoint(
+            document_id=document.id,
+            user_id=user_id,
+            x=float(coordinates[index][0]),
+            y=float(coordinates[index][1]),
+            cluster_id=cluster_id,
+            cluster_label=cluster_label,
+            is_anomaly=is_anomaly,
+            representative_snippet=snippet,
+        )
+        db.add(point)
 
     db.flush()
     auto_title_clusters(db, workspace_settings, user_id)

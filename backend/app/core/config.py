@@ -1,26 +1,34 @@
 import json
 from functools import lru_cache
 from pathlib import Path
+import os
+import sys
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+def get_env_file():
+    # If frozen, it's at _MEIPASS/backend/.env
+    # If not frozen, it's at ../../.env relative to this file
+    if getattr(sys, 'frozen', False):
+        return Path(sys._MEIPASS) / "backend" / ".env"
+    return Path(__file__).resolve().parents[2] / ".env"
 
+ENV_FILE = get_env_file()
 _DEFAULT_CORS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra='ignore'
     )
 
     app_name: str = "InfoGraph API"
     api_prefix: str = "/api/v1"
-    database_url: str
+    database_url: str = "" 
     storage_dir: Path = Path("backend/data/uploads")
-    secret_key: str
+    secret_key: str = "" 
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     openai_api_key: str | None = None
@@ -30,7 +38,6 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_embedding_model: str = "nomic-embed-text"
     ollama_chat_model: str = "llama3.1:8b"
-    # Stored as a plain string so pydantic-settings won't try json.loads()
     cors_origins: str = _DEFAULT_CORS
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -46,7 +53,6 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        """Parse cors_origins string into a list. Accepts JSON array or comma-separated."""
         s = (self.cors_origins or "").strip()
         if not s:
             return _DEFAULT_CORS.split(",")
@@ -57,10 +63,11 @@ class Settings(BaseSettings):
                 pass
         return [u.strip() for u in s.split(",") if u.strip()]
 
-
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        settings.storage_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     return settings
-

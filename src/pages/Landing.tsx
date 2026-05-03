@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import AuthModal, { type AuthMode } from '@/components/AuthModal';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
+import { EXE_DOWNLOAD_URL } from '@/lib/runtime';
 import crystalHero from '@/assets/crystal-hero.png';
 
 const features = [
@@ -42,8 +43,7 @@ export default function Landing() {
   };
 
   const handleGetStarted = () => {
-    if (user) navigate('/dashboard');
-    else openAuth('signup');
+    window.open(EXE_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
   };
 
   const initials = user
@@ -81,7 +81,7 @@ export default function Landing() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {user ? (
+            {user && (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
@@ -110,15 +110,6 @@ export default function Landing() {
                   </button>
                 </PopoverContent>
               </Popover>
-            ) : (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => openAuth('signin')}>
-                  Log in
-                </Button>
-                <Button size="sm" className="rounded-full" onClick={() => openAuth('signup')}>
-                  Sign up
-                </Button>
-              </>
             )}
           </div>
         </div>

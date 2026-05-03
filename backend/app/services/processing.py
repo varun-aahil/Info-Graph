@@ -76,30 +76,14 @@ def process_document(session_factory: sessionmaker, document_id: str) -> None:
             chunk_texts = [chunk.content for chunk in chunks]
             chunk_embeddings = []
             
-            # Batch process embeddings to update progress smoothly (from 60 to 85)
-            batch_size = 90 if workspace_settings.model_provider != "local" else 5
+            # Embeddings are always local via Ollama, so keep batches conservative.
+            batch_size = 5
             total_chunks = len(chunk_texts)
             for i in range(0, total_chunks, batch_size):
                 batch_texts = chunk_texts[i:i + batch_size]
-                
-                # Nomic local models use search_document prefix
-                if workspace_settings.model_provider == "local":
-                    embed_input = ["search_document: " + t for t in batch_texts]
-                else:
-                    embed_input = batch_texts
-                
-                import litellm
-                import time as _time
-                batch_embeddings = None
-                for attempt in range(5):
-                    try:
-                        batch_embeddings = provider_service.embed_texts(embed_input, workspace_settings)
-                        break
-                    except litellm.RateLimitError as e:
-                        if attempt == 4:
-                            raise e
-                        _time.sleep(20) # Back off and let the Gemini free tier RPM bucket refill
-                
+
+                embed_input = ["search_document: " + t for t in batch_texts]
+                batch_embeddings = provider_service.embed_texts(embed_input, workspace_settings)
                 chunk_embeddings.extend(batch_embeddings)
                 
                 # Calculate progress: 60 to 85

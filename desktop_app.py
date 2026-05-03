@@ -4,42 +4,52 @@ import time
 import os
 import uvicorn
 import webview
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 import httpx
 
 DESKTOP_PORT = 8000
 
-# We must load .env BEFORE anything else, so that SQLAlchemy and other imports
-# use the correct Supabase database URL.
 def get_base_path():
     """Get the absolute path to the base directory, handling PyInstaller's _MEIPASS."""
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
     return os.path.dirname(os.path.abspath(__file__))
 
+# 1. Resolve .env paths
 base_path = get_base_path()
-env_path = os.path.join(base_path, '.env')
+# Check both root and backend/ folder just in case
+bundled_envs = [
+    os.path.join(base_path, 'backend', '.env'),
+    os.path.join(base_path, '.env')
+]
+external_env = os.path.join(os.path.dirname(sys.executable), '.env')
 
-# If running as .exe, look for an external .env in the same directory as the .exe
-if getattr(sys, 'frozen', False):
-    external_env = os.path.join(os.path.dirname(sys.executable), '.env')
-    if os.path.isfile(external_env):
-        load_dotenv(external_env)
-    else:
-        load_dotenv(env_path) # Fallback to bundled .env
-else:
-    load_dotenv(env_path)
+# 2. Aggressively load environment variables
+target_env = external_env if os.path.isfile(external_env) else None
+if not target_env:
+    for env in bundled_envs:
+        if os.path.isfile(env):
+            target_env = env
+            break
 
+if target_env:
+    # Load into os.environ manually to ensure all libraries see them
+    env_vars = dotenv_values(target_env)
+    for key, value in env_vars.items():
+        if value is not None:
+            os.environ[key] = value
+    load_dotenv(target_env)
+
+# 3. Set runtime defaults
 desktop_origin = f"http://localhost:{DESKTOP_PORT}"
-os.environ["FRONTEND_URL"] = desktop_origin
+os.environ["FRONTEND_URL"] = os.environ.get("FRONTEND_URL", desktop_origin)
 os.environ["GOOGLE_REDIRECT_URI"] = f"{desktop_origin}/api/v1/auth/google/callback"
 
-# Important: Import FastAPI app AFTER loading the environment variables
+# 4. Import app ONLY after env vars are set
 from backend.app.main import app
 
 def start_server(port):
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
-
 
 def wait_for_server(port, timeout=30.0):
     deadline = time.time() + timeout
@@ -68,7 +78,7 @@ if __name__ == "__main__":
         <html>
           <body style="font-family: Segoe UI, sans-serif; background:#111; color:#f5f5f5; padding:24px;">
             <h2>InfoGraph Desktop failed to start</h2>
-            <p>Port {port} must be available because desktop Google login redirects back to this fixed local address.</p>
+            <p>Could not initialize backend server.</p>
             <pre style="white-space: pre-wrap; background:#1b1b1b; padding:16px; border-radius:8px;">{exc}</pre>
           </body>
         </html>
@@ -86,4 +96,4 @@ if __name__ == "__main__":
         webview.create_window(url=app_url, **window_kwargs)
     else:
         webview.create_window(html=error_html, **window_kwargs)
-    webview.start(private_mode=False) # private_mode=False keeps localStorage for tokens
+    webview.start(private_mode=False)

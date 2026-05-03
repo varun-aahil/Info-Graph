@@ -7,7 +7,9 @@ import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import AuthCallback from "./pages/AuthCallback";
+import DesktopAuth from "./pages/DesktopAuth";
 import { AuthProvider } from "./contexts/AuthContext";
+import { IS_DESKTOP_RUNTIME } from "./lib/runtime";
 
 const queryClient = new QueryClient();
 
@@ -19,7 +21,7 @@ const App = () => (
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={IS_DESKTOP_RUNTIME ? <DesktopAuth /> : <Landing />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="*" element={<NotFound />} />

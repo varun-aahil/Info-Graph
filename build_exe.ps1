@@ -1,23 +1,41 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
 Write-Host "Building React Frontend..."
 npm run build
 
 Write-Host "Building Python Executable..."
-pyinstaller --name "InfoGraph" `
+# We locate bottle.py and exclude it from analysis because Python 3.10.0's 'dis' module
+# crashes on its complex bytecode. We bundle it manually as a data file instead.
+$BOTTLE_PATH = python -c "import bottle; print(bottle.__file__)"
+Write-Host "Found bottle at: $BOTTLE_PATH"
+
+# We use a patched runner to avoid the Python 3.10.0 'dis' module IndexError crash
+python run_pyinstaller_patched.py --name "InfoGraph" `
             --onefile `
             --windowed `
-            --icon "public/favicon.ico" `
+            --icon "public/logo.ico" `
+            --distpath "release" `
+            --additional-hooks-dir "pyinstaller_hooks" `
             --add-data "dist;dist" `
-            --add-data "backend/.env;.env" `
+            --add-data "backend/.env;backend" `
+            --add-data "$($BOTTLE_PATH);." `
+            --exclude-module "bottle" `
             --hidden-import "uvicorn.logging" `
             --hidden-import "uvicorn.loops" `
             --hidden-import "uvicorn.loops.auto" `
             --hidden-import "uvicorn.protocols" `
             --hidden-import "uvicorn.protocols.http" `
             --hidden-import "uvicorn.protocols.http.auto" `
-            --hidden-import "uvicorn.protocols.websockets" `
-            --hidden-import "uvicorn.protocols.websockets.auto" `
+            --exclude-module "websockets" `
             --hidden-import "uvicorn.lifespan" `
             --hidden-import "uvicorn.lifespan.on" `
+            --hidden-import "passlib.handlers.pbkdf2" `
+            --hidden-import "passlib.handlers.bcrypt" `
             desktop_app.py
 
-Write-Host "Done! The executable is located in the 'dist/' folder."
+if ($LASTEXITCODE -ne 0) {
+  throw "PyInstaller build failed with exit code $LASTEXITCODE."
+}
+
+Write-Host "Done! The executable is located in the 'release/' folder."

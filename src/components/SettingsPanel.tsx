@@ -25,9 +25,7 @@ interface SettingsPanelProps {
 type ProviderConfig = {
   label: string;
   chatModels: string[];
-  embeddingModels: string[];
   defaultChatModel: string;
-  defaultEmbeddingModel: string;
   needsKey: boolean;
 };
 
@@ -42,17 +40,13 @@ const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
       'gemini-2.5-flash',
       'gemini-2.5-flash-lite',
     ],
-    embeddingModels: ['gemini/gemini-embedding-001'],
     defaultChatModel: 'gemini-2.5-flash',
-    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
     needsKey: true,
   },
   openai: {
     label: 'OpenAI',
     chatModels: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o4-mini', 'o3-mini'],
-    embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
     defaultChatModel: 'gpt-4.1-mini',
-    defaultEmbeddingModel: 'text-embedding-3-small',
     needsKey: true,
   },
   anthropic: {
@@ -66,9 +60,7 @@ const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
       'claude-opus-4-1-20250805',
       'claude-haiku-4-5-20251001',
     ],
-    embeddingModels: ['gemini/gemini-embedding-001'],
     defaultChatModel: 'claude-sonnet-4-6',
-    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
     needsKey: true,
   },
   xai: {
@@ -83,25 +75,19 @@ const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
       'grok-3',
       'grok-3-mini',
     ],
-    embeddingModels: ['gemini/gemini-embedding-001'],
     defaultChatModel: 'grok-4.3',
-    defaultEmbeddingModel: 'gemini/gemini-embedding-001',
     needsKey: true,
   },
   cloud: {
     label: 'Cloud (Legacy)',
     chatModels: ['gpt-4.1-mini', 'gpt-4o-mini'],
-    embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
     defaultChatModel: 'gpt-4.1-mini',
-    defaultEmbeddingModel: 'text-embedding-3-small',
     needsKey: true,
   },
   local: {
     label: 'Custom / Local',
     chatModels: [],
-    embeddingModels: [],
     defaultChatModel: 'llama3.1:8b',
-    defaultEmbeddingModel: 'nomic-embed-text',
     needsKey: false,
   },
 };
@@ -177,28 +163,27 @@ export default function SettingsPanel({
   };
 
   useEffect(() => {
-    if (provider !== 'local') return;
     loadLocalModels(workspaceSettings.local_base_url).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, workspaceSettings.local_base_url]);
+  }, [workspaceSettings.local_base_url]);
 
   useEffect(() => {
-    if (provider !== 'local') return;
-
     const nextChatModel =
-      localChatModels.find((model) => model === workspaceSettings.cloud_chat_model) ||
-      localChatModels.find((model) => model.startsWith('llama3')) ||
-      localChatModels[0] ||
-      config.defaultChatModel;
+      provider === 'local'
+        ? localChatModels.find((model) => model === workspaceSettings.cloud_chat_model) ||
+          localChatModels.find((model) => model.startsWith('llama3')) ||
+          localChatModels[0] ||
+          config.defaultChatModel
+        : workspaceSettings.cloud_chat_model;
 
     const nextEmbeddingModel =
       localEmbeddingModels.find((model) => model === workspaceSettings.cloud_embedding_model) ||
       localEmbeddingModels.find((model) => model.startsWith('nomic-embed-text')) ||
       localEmbeddingModels[0] ||
-      config.defaultEmbeddingModel;
+      'nomic-embed-text';
 
     if (
-      workspaceSettings.cloud_chat_model !== nextChatModel ||
+      (provider === 'local' && workspaceSettings.cloud_chat_model !== nextChatModel) ||
       workspaceSettings.cloud_embedding_model !== nextEmbeddingModel
     ) {
       setWorkspaceSettings((current) => ({
@@ -209,7 +194,6 @@ export default function SettingsPanel({
     }
   }, [
     config.defaultChatModel,
-    config.defaultEmbeddingModel,
     localChatModels,
     localEmbeddingModels,
     provider,
@@ -245,7 +229,6 @@ export default function SettingsPanel({
         cloud_api_key: value,
         cloud_base_url: '',
         cloud_chat_model: next.defaultChatModel,
-        cloud_embedding_model: next.defaultEmbeddingModel,
       }));
       return;
     }
@@ -264,7 +247,6 @@ export default function SettingsPanel({
       cloud_base_url: '',
       local_base_url: nextProvider === 'local' ? 'http://localhost:11434' : current.local_base_url,
       cloud_chat_model: next.defaultChatModel,
-      cloud_embedding_model: next.defaultEmbeddingModel,
     }));
   };
 
@@ -349,7 +331,7 @@ export default function SettingsPanel({
   };
 
   const chatModelOptions = provider === 'local' ? localChatModels : config.chatModels;
-  const embeddingModelOptions = provider === 'local' ? localEmbeddingModels : config.embeddingModels;
+  const embeddingModelOptions = localEmbeddingModels;
 
   return (
     <main className="flex-1 overflow-auto p-6">
@@ -375,7 +357,7 @@ export default function SettingsPanel({
 
           <div className="rounded-xl border border-border bg-card p-6">
             <h3 className="mb-1 text-sm font-semibold text-foreground">Model Configuration</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Choose how to connect your LLM</p>
+            <p className="mb-4 text-xs text-muted-foreground">Cloud providers are used only for chat. Embeddings are always generated locally with Ollama.</p>
 
             <div className="space-y-5">
               <div>
@@ -435,58 +417,58 @@ export default function SettingsPanel({
                     </p>
                   )}
                 </div>
-              ) : (
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-foreground">
-                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">2</span>
-                    Ollama Base URL
-                  </label>
-                  <Input
-                    value={workspaceSettings.local_base_url}
-                    onChange={(e) =>
-                      setWorkspaceSettings((current) => ({ ...current, local_base_url: e.target.value }))
-                    }
-                    className="h-9 text-sm"
-                  />
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs"
-                      onClick={() => loadLocalModels(workspaceSettings.local_base_url)}
-                      disabled={isLoadingLocalModels}
-                    >
-                      {isLoadingLocalModels ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refresh Models'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs"
-                      onClick={() => window.open(ollamaDownloadUrl, '_blank', 'noopener,noreferrer')}
-                    >
-                      Install Ollama
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs"
-                      onClick={() => window.open(ollamaLibraryUrl, '_blank', 'noopener,noreferrer')}
-                    >
-                      Browse Models
-                    </Button>
-                  </div>
-                  <p className="mt-1.5 text-[10px] text-muted-foreground">
-                    Only models already installed in your local Ollama instance appear below.
-                  </p>
+              ) : null}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-foreground">
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{config.needsKey ? '3' : '2'}</span>
+                  Ollama Base URL
+                </label>
+                <Input
+                  value={workspaceSettings.local_base_url}
+                  onChange={(e) =>
+                    setWorkspaceSettings((current) => ({ ...current, local_base_url: e.target.value }))
+                  }
+                  className="h-9 text-sm"
+                />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => loadLocalModels(workspaceSettings.local_base_url)}
+                    disabled={isLoadingLocalModels}
+                  >
+                    {isLoadingLocalModels ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Refresh Models'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    onClick={() => window.open(ollamaDownloadUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    Install Ollama
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs"
+                    onClick={() => window.open(ollamaLibraryUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    Browse Models
+                  </Button>
                 </div>
-              )}
+                <p className="mt-1.5 text-[10px] text-muted-foreground">
+                  Embeddings always come from your local Ollama instance, even when chat uses a cloud provider.
+                </p>
+              </div>
 
               <div>
                 <label className="mb-2.5 block text-xs font-medium text-foreground">
-                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">3</span>
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{config.needsKey ? '4' : '3'}</span>
                   Models
                 </label>
                 <div className="grid grid-cols-2 gap-4">
@@ -525,7 +507,7 @@ export default function SettingsPanel({
                       onValueChange={(value) =>
                         setWorkspaceSettings((current) => ({ ...current, cloud_embedding_model: value }))
                       }
-                      disabled={provider === 'local' && embeddingModelOptions.length === 0}
+                      disabled={embeddingModelOptions.length === 0}
                     >
                       <SelectTrigger className="h-9 text-sm">
                         <SelectValue
@@ -547,43 +529,41 @@ export default function SettingsPanel({
                   </div>
                 </div>
 
-                {provider === 'local' && (
-                  <div className="mt-4 space-y-2">
-                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                      Recommended Embedding Models
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">
-                      Local embeddings are limited to 768-dimension models right now because the vector database schema is fixed to 768.
-                    </p>
-                    {recommendedEmbeddingModels.map((model) => {
-                      const isInstalled = localEmbeddingModels.includes(model.name);
-                      return (
-                        <div key={model.name} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium text-foreground">{model.name}</div>
-                            <div className="text-[10px] text-muted-foreground">{model.description}</div>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isInstalled ? 'outline' : 'default'}
-                            className="h-7 text-[10px]"
-                            disabled={isInstalled || pullingModelName === model.name}
-                            onClick={() => handlePullEmbeddingModel(model.name)}
-                          >
-                            {pullingModelName === model.name ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : isInstalled ? (
-                              'Installed'
-                            ) : (
-                              'Download'
-                            )}
-                          </Button>
-                        </div>
-                      );
-                    })}
+                <div className="mt-4 space-y-2">
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Recommended Embedding Models
                   </div>
-                )}
+                  <p className="text-[10px] text-muted-foreground">
+                    These local embeddings are shared across all providers. The vector database schema is fixed to 768 dimensions right now.
+                  </p>
+                  {recommendedEmbeddingModels.map((model) => {
+                    const isInstalled = localEmbeddingModels.includes(model.name);
+                    return (
+                      <div key={model.name} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-foreground">{model.name}</div>
+                          <div className="text-[10px] text-muted-foreground">{model.description}</div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={isInstalled ? 'outline' : 'default'}
+                          className="h-7 text-[10px]"
+                          disabled={isInstalled || pullingModelName === model.name}
+                          onClick={() => handlePullEmbeddingModel(model.name)}
+                        >
+                          {pullingModelName === model.name ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : isInstalled ? (
+                            'Installed'
+                          ) : (
+                            'Download'
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

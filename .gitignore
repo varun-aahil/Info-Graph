@@ -38,8 +38,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 .venv/
+.venv_backend/
 .mypy_cache/
 *.egg-info/
 
+# PyInstaller
+build/
+*.spec
+
 # Backend runtime data (user uploads — never commit)
 backend/data/uploads/
+
+# Build artifacts
+release/

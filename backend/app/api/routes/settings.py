@@ -273,22 +273,10 @@ def update_workspace_settings(
     settings_row.cloud_base_url = cloud_base_url
     settings_row.cloud_chat_model = payload.cloud_chat_model.strip()
     
-    # Auto-resolve embedding model per provider
-    EMBEDDING_DEFAULTS = {
-        "gemini": "gemini/gemini-embedding-001",
-        "openai": "text-embedding-3-small",
-        "anthropic": "gemini/gemini-embedding-001",
-        "xai": "gemini/gemini-embedding-001",
-        "cloud": "text-embedding-3-small",
-        "local": get_settings().ollama_embedding_model,
-    }
     submitted_embedding = payload.cloud_embedding_model.strip()
-    if not submitted_embedding or (provider == "gemini" and not submitted_embedding.startswith("gemini/")):
-        submitted_embedding = EMBEDDING_DEFAULTS.get(provider, "text-embedding-3-small")
-        
-    if submitted_embedding in ("gemini/text-embedding-004", "gemini/embedding-001"):
-        submitted_embedding = "gemini/gemini-embedding-001"
-        
+    if not submitted_embedding:
+        submitted_embedding = get_settings().ollama_embedding_model
+
     settings_row.cloud_embedding_model = submitted_embedding
     
     settings_row.local_base_url = payload.local_base_url.strip()
